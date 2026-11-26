@@ -4,6 +4,9 @@ Původní procedurální knihovna ohně, kouře a souvisejících 3D efektů pro
 a další hry. Webový prohlížeč má 17 scénářů, živou kameru, časovou osu, čtyři
 podmínky větru, ovládání přísunu vzduchu a přepínače vrstev.
 
+Soukromý webový náhled vyžaduje přihlášení k účtu ChatGPT vlastníka.
+[Otevřít Fire Asset Lab](https://fire-asset-lab-astra.ondrejkaplandrm.chatgpt.site)
+
 ## Spuštění
 
 Potřebujete Node.js 20.19+ nebo 22.12+ a pro živou scénu prohlížeč s WebGL 2.

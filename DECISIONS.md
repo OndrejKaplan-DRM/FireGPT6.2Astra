@@ -24,3 +24,7 @@
 - **Projektová paměť.** `AGENTS.md` je standardní vstup Codexu.
   Obsah poznámek, postup a omezení jsou v uživatelem požadovaném
   `ASTRA.md` a ve zbývajících projektových souborech.
+
+- **Distribuce.** Repozitář GitHub je hlavní zdroj a nese úplný ZIP.
+  Soukromý webový náhled načítá ZIP přes odkaz na konkrétní commit.
+  Statické náhledy a aplikace jsou součástí webového sestavení.

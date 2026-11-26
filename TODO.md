@@ -10,6 +10,8 @@
 - [x] Export GLB, JSON, PNG a flipbooku ze zvolených parametrů.
 - [x] Distribuční ZIP se 17 rendery, 17 atlasy, 45 GLB a 136 presety podmínek.
 - [x] Zdrojový vzorek 100, 10 000 a 1 000 000 trojúhelníků.
+- [x] Produkční sestavení, ověření LOD a obsahu ZIP, kontrola alfy všech 17 atlasů.
+- [x] Soukromé nasazení webové aplikace. Odkaz je v `README.md`.
 - [ ] Změřit FPS na fyzickém T460 a na současné herní grafice při shodné
   velikosti viewportu. Zapsat GPU, ovladač, scénář, rozlišení a časy snímků.
 - [ ] Ověřit barevný prostor a import alfy v cílovém herním enginu při
