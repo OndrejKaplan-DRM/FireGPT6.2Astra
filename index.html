@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#101114">
+    <meta name="description" content="Interaktivní 3D laboratoř ohně, kouře a herních efektů.">
+    <title>Fire Asset Lab · Astra</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <div class="brand">
+          <span class="brand-icon" data-icon="flame"></span>
+          <div><strong>Fire Asset Lab</strong><small>ASTRA / VFX STUDIO</small></div>
+        </div>
+        <div class="top-actions">
+          <a class="button ghost repo-link" href="https://github.com/OndrejKaplan-DRM/FireGPT6.2Astra" target="_blank" rel="noopener"><span data-icon="github"></span><span>GitHub</span></a>
+          <a id="dataset" class="button primary" href="./dataset/fire-asset-lab.zip" download><span data-icon="download"></span><span>Stáhnout dataset</span></a>
+        </div>
+      </div>
+    </header>
+
+    <main class="shell">
+      <div class="page-head">
+        <div>
+          <h1>Oheň &amp; kouř</h1>
+          <p>Procedurální knihovna 3D efektů pro herní enginy.</p>
+        </div>
+        <div class="page-stats"><span class="status-dot"></span><span id="catalog-status">17 efektů</span><span class="page-stats-separator"></span><span>3 profily kvality</span></div>
+      </div>
+
+      <div class="workspace">
+        <aside class="panel library" aria-label="Katalog efektů">
+          <div class="library-header">
+            <h2><span data-icon="library-big"></span>Katalog efektů</h2>
+            <label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="Hledat efekt…" autocomplete="off" aria-label="Hledat efekt"></label>
+          </div>
+          <nav id="catalog" class="catalog"></nav>
+        </aside>
+
+        <section id="stage" class="panel stage" aria-label="3D náhled efektu">
+          <div class="stage-head">
+            <div class="stage-title"><span data-icon="box"></span><h2>3D náhled</h2></div>
+            <div class="stage-tools">
+              <button id="grid" class="icon-button" type="button" title="Mřížka" aria-label="Mřížka" aria-pressed="false" data-icon="grid-3x3"></button>
+              <button id="wire" class="icon-button" type="button" title="Drátěný model" aria-label="Drátěný model" aria-pressed="false" data-icon="boxes"></button>
+              <label class="view-select" title="Úhel kamery"><span data-icon="orbit"></span><select id="camera" aria-label="Úhel kamery"><option value="orbit">Perspektiva</option><option value="front">Zepředu</option><option value="side">Z boku</option><option value="top">Shora</option></select><span data-icon="chevron-down"></span></label>
+              <button id="maximize" class="icon-button" type="button" title="Celá obrazovka" aria-label="Celá obrazovka" aria-pressed="false" data-icon="maximize"></button>
+            </div>
+          </div>
+          <div id="view" class="viewport">
+            <canvas id="live" aria-label="Ovládaný WebGL náhled. Táhnutím otočíte kameru a kolečkem přiblížíte."></canvas>
+            <img id="fallback-frame" alt="" hidden>
+            <div class="viewport-label"><span id="render-indicator" class="status-dot"></span><span id="render-mode">WEBGL 2</span><span id="fps"></span></div>
+            <div class="view-bottom"><div class="axis" aria-hidden="true"><span class="axis-y">Y</span><span class="axis-x">X</span><span class="axis-z">Z</span><i></i></div><div class="gesture"><span data-icon="mouse"></span> Táhnout pro otáčení · kolečko pro zoom</div></div>
+            <div id="view-message" class="view-message" hidden></div>
+          </div>
+          <div class="transport">
+            <button id="play" class="icon-button play" aria-label="Pozastavit" title="Pozastavit" data-icon="pause" type="button"></button>
+            <button id="restart" class="icon-button restart" aria-label="Od začátku" title="Od začátku" data-icon="rotate-ccw" type="button"></button>
+            <output id="time" class="time" for="timeline">0,00 s</output>
+            <input id="timeline" type="range" min="0" max="8" step="0.01" value="0" aria-label="Čas animace">
+            <span id="duration" class="duration">8 s</span>
+            <label class="speed"><select id="speed" aria-label="Rychlost přehrávání"><option value="0.25">0,25×</option><option value="0.5">0,5×</option><option value="1" selected>1×</option><option value="2">2×</option></select><span data-icon="chevron-down"></span></label>
+            <button id="loop" class="icon-button loop" aria-label="Opakování" aria-pressed="true" title="Opakování" data-icon="repeat" type="button"></button>
+          </div>
+        </section>
+
+        <aside class="panel inspector" aria-label="Nastavení efektu">
+          <div class="tabs" role="tablist" aria-label="Inspektor">
+            <button id="tab-params" role="tab" aria-controls="pane-params" aria-selected="true" type="button"><span data-icon="sliders-horizontal"></span>Parametry</button>
+            <button id="tab-export" role="tab" aria-controls="pane-export" aria-selected="false" tabindex="-1" type="button"><span data-icon="package"></span>Export</button>
+          </div>
+          <div id="pane-params" role="tabpanel" aria-labelledby="tab-params">
+            <div class="asset-info">
+              <div id="asset-kind" class="asset-kind"></div>
+              <h3 id="asset-name"></h3>
+              <p id="asset-description"></p>
+              <dl class="metrics"><div><dt>Trojúhelníky</dt><dd id="triangles">—</dd></div><div><dt>Výška plamene</dt><dd id="height">—</dd></div></dl>
+            </div>
+            <div class="inspector-block">
+              <div class="section-label"><span data-icon="gauge"></span><h3>Profil kvality</h3></div>
+              <div id="quality" class="segmented quality" aria-label="Profil kvality"></div>
+              <div id="quality-info" class="quality-detail"></div>
+            </div>
+            <div class="inspector-block conditions">
+              <div class="section-label"><span data-icon="wind"></span><h3>Podmínky</h3></div>
+              <label class="form-label" for="wind">Vítr</label>
+              <div class="field-select"><select id="wind"></select><span data-icon="chevron-down"></span></div>
+              <div class="oxygen-label"><label class="form-label" for="oxygen">Přísun vzduchu</label><output id="oxygen-value" for="oxygen">100 %</output></div>
+              <input id="oxygen" type="range" min="0" max="100" step="1" aria-label="Přísun vzduchu">
+              <div class="range-labels"><span>Omezený</span><span>Plný</span></div>
+            </div>
+            <div class="inspector-block layers-block">
+              <div class="section-label"><span data-icon="layers-3"></span><h3>Vrstvy efektu</h3></div>
+              <div id="layers" class="layers"></div>
+            </div>
+          </div>
+          <div id="pane-export" role="tabpanel" aria-labelledby="tab-export" hidden>
+            <div class="export-info">
+              <div class="asset-kind">SOUBORY PRO ENGINE</div>
+              <h3>Export efektu</h3>
+              <p>Soubory používají metry a osu Y nahoru. PNG atlas přebírá aktuální vrstvy, seed a podmínky.</p>
+              <label class="form-label seed-label" for="seed">Seed</label>
+              <input id="seed" type="number" min="0" max="999999" step="1">
+              <div id="export-actions" class="export-actions">
+                <button type="button" id="export-json" class="button outline"><span data-icon="file-json"></span><span>Preset<wbr> <small>JSON</small></span><span data-icon="download"></span></button>
+                <button type="button" id="export-glb" class="button outline"><span data-icon="box"></span><span>Model<wbr> <small>GLB</small></span><span data-icon="download"></span></button>
+                <button type="button" id="export-png" class="button outline"><span data-icon="image"></span><span>Aktuální snímek<wbr> <small>PNG</small></span><span data-icon="download"></span></button>
+                <button type="button" id="export-atlas" class="button outline"><span data-icon="grid-3x3"></span><span>Flipbook s alfou<wbr> <small>ZIP</small></span><span data-icon="download"></span></button>
+              </div>
+              <progress id="export-progress" hidden max="100" value="0"></progress>
+              <p id="export-status" class="export-status" role="status"></p>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <section class="gallery" aria-labelledby="gallery-title">
+        <div class="gallery-heading"><div><h2 id="gallery-title">Vyrenderované náhledy</h2><p>Snímky ze stejného 3D rendereru.</p></div><div class="gallery-controls"><button id="gallery-back" class="icon-button" aria-label="Předchozí náhledy" data-icon="chevron-left"></button><button id="gallery-next" class="icon-button" aria-label="Další náhledy" data-icon="chevron-right"></button></div></div>
+        <div id="gallery-track" class="gallery-track"></div>
+      </section>
+      <footer><span>Fire Asset Lab</span><span>VFX DATASET · v0.1.0</span></footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
