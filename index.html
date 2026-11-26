@@ -44,6 +44,7 @@
             <div class="stage-title"><span data-icon="box"></span><h2>3D náhled</h2></div>
             <div class="stage-tools">
               <button id="grid" class="icon-button" type="button" title="Mřížka" aria-label="Mřížka" aria-pressed="false" data-icon="grid-3x3"></button>
+              <button id="backdrop" class="icon-button" type="button" title="Refrakční pozadí" aria-label="Refrakční pozadí" aria-pressed="false" data-icon="scan-line"></button>
               <button id="wire" class="icon-button" type="button" title="Drátěný model" aria-label="Drátěný model" aria-pressed="false" data-icon="boxes"></button>
               <label class="view-select" title="Úhel kamery"><span data-icon="orbit"></span><select id="camera" aria-label="Úhel kamery"><option value="orbit">Perspektiva</option><option value="front">Zepředu</option><option value="side">Z boku</option><option value="top">Shora</option></select><span data-icon="chevron-down"></span></label>
               <button id="maximize" class="icon-button" type="button" title="Celá obrazovka" aria-label="Celá obrazovka" aria-pressed="false" data-icon="maximize"></button>
@@ -118,10 +119,20 @@
       </div>
 
       <section class="gallery" aria-labelledby="gallery-title">
-        <div class="gallery-heading"><div><h2 id="gallery-title">Vyrenderované náhledy</h2><p>Snímky ze stejného 3D rendereru.</p></div><div class="gallery-controls"><button id="gallery-back" class="icon-button" aria-label="Předchozí náhledy" data-icon="chevron-left"></button><button id="gallery-next" class="icon-button" aria-label="Další náhledy" data-icon="chevron-right"></button></div></div>
+        <div class="gallery-heading">
+          <div><h2 id="gallery-title">Vyrenderované náhledy</h2><p id="gallery-caption">Snímky ze stejného 3D rendereru.</p></div>
+          <div class="gallery-controls">
+            <div id="gallery-mode" class="segmented" aria-label="Obsah galerie">
+              <button type="button" data-gallery="scenes" aria-pressed="true">Scény</button>
+              <button type="button" data-gallery="studies" aria-pressed="false">Studie</button>
+            </div>
+            <button id="gallery-back" class="icon-button" aria-label="Předchozí náhledy" data-icon="chevron-left"></button>
+            <button id="gallery-next" class="icon-button" aria-label="Další náhledy" data-icon="chevron-right"></button>
+          </div>
+        </div>
         <div id="gallery-track" class="gallery-track"></div>
       </section>
-      <footer><span>Fire Asset Lab</span><span>VFX DATASET · v0.1.0</span></footer>
+      <footer><span>Fire Asset Lab</span><span>VFX DATASET · v0.2.0</span></footer>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

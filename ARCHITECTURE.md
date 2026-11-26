@@ -7,9 +7,10 @@ Přenositelné soubory lze využít přímo v enginu nebo s jeho vlastním VFX s
 | --- | --- |
 | `src/catalog.js` | Stabilní ID, názvy, rozměry, objemové parametry a profily kvality, konstrukce descriptoru |
 | `src/models.js` | Deterministická původní geometrie, PBR materiály, vertex barvy a tři LOD |
-| `src/particles.js` | Seedované žhavé částice, konce stop a jejich časový vývoj |
-| `src/volume.js` | Periodický 3D šum, tvar a advekce plamene a kouře, raymarching a kompozice |
+| `src/particles.js` | Seedované žhavé částice, změny barvy při chladnutí a segmentované stopy |
+| `src/volume.js` | Periodický 3D šum, doménové deformace a raymarching emisivních a rozptylujících vrstev |
 | `src/viewer.js` | Scéna, GPU render target s hloubkou, světla, kamera, rozpočty a životnost GPU zdrojů |
+| `src/studies.js` | Definice studiových záběrů a aplikace jejich parametrů v náhledu i při bake |
 | `src/main.js` | Katalog, transport animace, inspektor, nastavení a fallback snímek |
 | `src/exporter.js` | Serializace GLB a JSON a průhledný flipbook ze stejného rendereru |
 | `src/bake.js`, `scripts/bake.mjs` | Reprodukovatelné dávkové rendery, scény GLB, manifesty a ZIP |
@@ -25,11 +26,15 @@ Přenositelné soubory lze využít přímo v enginu nebo s jeho vlastním VFX s
 3. Obrazový shader rekonstruuje paprsek z projekce, ořízne jej boxem objemu
    a hloubkou geometrie. Skládá emisi a extinkci od kamery dozadu.
    Parametry větru, turbulence a přísunu vzduchu řídí deformaci a hustotu.
-4. Chvění vzduchu posune čtení pozadí uvnitř objemu. Finální průchod
+   Pro krátké efekty se samostatně skládá emisivní záblesk, stoupající
+   kouř a nízký rozptýlený prach.
+4. Chvění vzduchu posune čtení pozadí podle směrových rozdílů šumu
+   vzorkovaných podél paprsku. Finální průchod
    převádí lineární barvu filmovou křivkou do sRGB.
 5. Bake používá shodný renderer v řízeném čase a průhledném režimu.
    Profil určuje počet vzorků objemu, rozpočet částic, stíny a LOD.
-   Průhledný atlas používá jednu kameru a sRGB s přímou alfou.
+   Průhledný atlas používá jednu kameru a sRGB s přímou alfou. U burstů
+   jsou časy jednotlivých vzorků uložené v `frameTimes`.
 
 ## Datové rozhraní
 

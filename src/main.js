@@ -2,6 +2,7 @@ import '@fontsource-variable/inter/wght.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import './styles.css';
 import { groups, initialSettings, layers, presets, qualities, winds } from './catalog.js';
+import { applyStudy, studies } from './studies.js';
 import { icon } from './icons.js';
 import { createViewer } from './viewer.js';
 
@@ -33,6 +34,9 @@ function runLab() {
   let speed = 1;
   let grid = false;
   let wire = false;
+  let backdrop = false;
+  let selectedStudy = null;
+  let galleryMode = 'scenes';
   let dirty = true;
   let viewer;
   let exporting = false;
@@ -64,7 +68,7 @@ function runLab() {
     if (asset) $('fallback-frame').src = stillUrl(asset.id);
   }
 
-  function stillUrl(id) { return import.meta.env.BASE_URL + 'renders/' + id + '.webp'; }
+  function stillUrl(id, study = false) { return import.meta.env.BASE_URL + 'renders/' + (study ? 'studies/' : '') + id + '.webp'; }
   const normalize = (value) => value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
   function renderCatalog() {
     const search = normalize($('search').value.trim());
@@ -86,12 +90,22 @@ function runLab() {
 
   function renderGallery() {
     const lead = ['campfire', 'candle', 'tires', 'forest', 'barrel', 'spark', 'car'];
-    const items = [...lead.map((id) => byId.get(id)), ...presets.filter((p) => !lead.includes(p.id))];
-    $('gallery-track').innerHTML = items.map((p) => `
-      <button class="preview-card" type="button" data-asset="${p.id}" aria-current="${p.id === asset.id}" aria-label="Otevřít efekt ${p.name}">
-        <img src="${stillUrl(p.id)}" alt="" loading="lazy" decoding="async" width="480" height="296">
-        <span class="preview-copy"><span>${p.name}</span>${icon('play')}</span>
-      </button>`).join('');
+    const scenes = [...lead.map((id) => byId.get(id)), ...presets.filter((p) => !lead.includes(p.id))];
+    const studyMode = galleryMode === 'studies';
+    const items = studyMode ? studies : scenes;
+    $('gallery-mode').querySelectorAll('button').forEach((button) => {
+      button.setAttribute('aria-pressed', button.dataset.gallery === galleryMode);
+    });
+    $('gallery-caption').textContent = studyMode ? 'Podmínky, detaily a fáze animace. Kliknutím otevřeš konkrétní snímek.' : 'Snímky ze stejného 3D rendereru.';
+    $('gallery-track').innerHTML = items.map((p) => {
+      const title = studyMode ? p.title : p.name;
+      const active = studyMode ? p.id === selectedStudy?.id : p.id === asset.id;
+      return `
+        <button class="preview-card" type="button" ${studyMode ? 'data-study' : 'data-asset'}="${p.id}" aria-current="${active}" aria-label="Otevřít efekt ${title}">
+          <img src="${stillUrl(p.id, studyMode)}" alt="" loading="lazy" decoding="async" width="960" height="592">
+          <span class="preview-copy"><span>${title}</span>${icon(studyMode ? 'image' : 'play')}</span>
+        </button>`;
+    }).join('');
     $('gallery-track').querySelectorAll('img').forEach((image) => image.addEventListener('error', () => { image.hidden = true; }));
   }
 
@@ -108,6 +122,7 @@ function runLab() {
     $('quality').querySelectorAll('button').forEach((node) => node.setAttribute('aria-pressed', node.dataset.quality === settings.quality));
     const q = qualities[settings.quality];
     $('quality-info').textContent = q.steps + ' kroků objemu · až ' + q.particles + ' částic';
+    $('layers').querySelectorAll('[data-burst-only]').forEach((row) => { row.hidden = !asset.burst; });
     $('layers').querySelectorAll('input').forEach((node) => { node.checked = settings.layers[node.value]; });
     $('export-glb').disabled = asset.model === 'none' || exporting;
     $('export-glb').title = asset.model === 'none' ? 'Efekt obsahuje pouze VFX vrstvy' : '';
@@ -140,19 +155,23 @@ function runLab() {
     dirty = true;
   }
 
-  function select(id, fromGallery = false) {
+  function select(id, fromGallery = false, restore = Boolean(selectedStudy)) {
     if (!byId.has(id)) return;
     const next = byId.get(id);
-    if (next.id !== asset.id) {
+    if (next.id !== asset.id || restore) {
+      selectedStudy = null;
+      backdrop = false;
+      $('backdrop').setAttribute('aria-pressed', 'false');
+      viewer?.setBackdrop(false);
       asset = next;
       settings = initialSettings(asset, settings.quality);
-      time = asset.burst && playing ? .017 : asset.burst ? asset.duration * .077 : .84;
+      time = asset.burst && playing ? .017 : asset.id === 'grenade' ? .37 : asset.burst ? asset.duration * .041 : .84;
       if (viewer) {
         viewer.configure(asset, settings.quality, true);
         $('camera').value = 'orbit';
       } else $('fallback-frame').src = stillUrl(id);
       $('catalog').querySelectorAll('[data-asset]').forEach((node) => node.setAttribute('aria-current', node.dataset.asset === id));
-      $('gallery-track').querySelectorAll('[data-asset]').forEach((node) => node.setAttribute('aria-current', node.dataset.asset === id));
+      $('gallery-track').querySelectorAll('.preview-card').forEach((node) => node.setAttribute('aria-current', node.dataset.asset === id));
       const url = new URL(location.href);
       url.searchParams.set('asset', id);
       history.replaceState(null, '', url);
@@ -166,8 +185,8 @@ function runLab() {
   $('quality').innerHTML = Object.entries(qualities).map(([key, profile]) =>
     `<button data-quality="${key}" type="button" aria-pressed="false">${profile.label}</button>`).join('');
   $('wind').innerHTML = winds.map((wind, i) => `<option value="${i}">${wind.label}</option>`).join('');
-  $('layers').innerHTML = layers.map(({ id, label, color }) =>
-    `<label class="layer"><span><i class="layer-dot" style="--layer-color:${color}"></i>${label}</span><input type="checkbox" role="switch" value="${id}" aria-label="${label}"></label>`).join('');
+  $('layers').innerHTML = layers.map(({ id, label, color, burstOnly }) =>
+    `<label class="layer" ${burstOnly ? 'data-burst-only' : ''}><span><i class="layer-dot" style="--layer-color:${color}"></i>${label}</span><input type="checkbox" role="switch" value="${id}" aria-label="${label}"></label>`).join('');
 
   $('search').addEventListener('input', renderCatalog);
   $('catalog').addEventListener('click', (event) => {
@@ -183,9 +202,39 @@ function runLab() {
     }
   });
   $('gallery-track').addEventListener('click', (event) => {
-    const card = event.target.closest('[data-asset]');
-    if (card) select(card.dataset.asset, true);
+    const card = event.target.closest('.preview-card');
+    if (card?.dataset.asset) select(card.dataset.asset, true);
+    if (card?.dataset.study) openStudy(studies.find(({ id }) => id === card.dataset.study));
   });
+  $('gallery-mode').addEventListener('click', (event) => {
+    const next = event.target.closest('[data-gallery]')?.dataset.gallery;
+    if (!next || next === galleryMode) return;
+    galleryMode = next;
+    renderGallery();
+    $('gallery-track').scrollLeft = 0;
+  });
+
+  function openStudy(study) {
+    select(study.asset, true, true);
+    selectedStudy = study;
+    time = study.frame;
+    playing = false;
+    updatePlay();
+    applyStudy(settings, study);
+    backdrop = Boolean(study.backdrop);
+    $('backdrop').setAttribute('aria-pressed', backdrop);
+    $('camera').value = study.view ?? 'orbit';
+    if (viewer) {
+      viewer.setBackdrop(backdrop);
+      viewer.frame(study.view, study.framing);
+    } else {
+      $('fallback-frame').src = stillUrl(study.id, true);
+    }
+    $('gallery-track').querySelectorAll('[data-study]').forEach((node) => node.setAttribute('aria-current', node.dataset.study === study.id));
+    syncInspector();
+    syncTime();
+    dirty = true;
+  }
   for (const [id, direction] of [['gallery-back', -1], ['gallery-next', 1]]) {
     $(id).addEventListener('click', () => $('gallery-track').scrollBy({ left: direction * $('gallery-track').clientWidth * .72, behavior: 'smooth' }));
   }
@@ -215,6 +264,12 @@ function runLab() {
       dirty = true;
     });
   }
+  $('backdrop').addEventListener('click', () => {
+    backdrop = !backdrop;
+    viewer?.setBackdrop(backdrop);
+    $('backdrop').setAttribute('aria-pressed', backdrop);
+    dirty = true;
+  });
   $('camera').addEventListener('change', () => { viewer?.frame($('camera').value); dirty = true; });
   $('maximize').addEventListener('click', async () => {
     try {

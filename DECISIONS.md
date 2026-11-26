@@ -28,3 +28,23 @@
 - **Distribuce.** Repozitář GitHub je hlavní zdroj a nese úplný ZIP.
   Soukromý webový náhled načítá ZIP přes odkaz na konkrétní commit.
   Statické náhledy a aplikace jsou součástí webového sestavení.
+
+## 26. 11. 2026 · Druhá iterace
+
+- **Reference a expozice.** Škála plamene jde od tlumených červenohnědých
+  záhybů do světlého teplého jádra. U knotu má vlastní namodralou patu a
+  stíněnou oblast. Nastavení vychází ze znaků fotografie a jednotlivých
+  fází videí. Zdrojové záběry jsou evidované v [REFERENCES.md](REFERENCES.md).
+- **Kouř a prach.** Krátké herní efekty mají samostatný záblesk, nízký prach
+  a stoupající kouř. Scénický preset granátu dává přednost nízké a světlejší
+  cloně. Velký scénický preset má členitější tmavý oblak s delším dozvukem.
+  Poměr se nastavuje jako rozptyl světla a doba čitelnosti ve zvoleném záběru.
+- **Dynamika.** Plameny u dřeva skládají několik jazyků. Částice chladnou
+  směrem do červena, žhavé dřevo pomalu kolísá a delší stopy mají v Balanced
+  a Cinematic více segmentů. Refrakce čte změnu pozadí v několika hloubkách.
+- **LOD.** Rozpočet trojúhelníků profilu T460 zůstává stejný. Hustší
+  geometrii dostaly vosk, uhlíky, polena a kameny, běhouny, větvení a jehličí,
+  střecha a spáry. Cinematic vzorkuje objem až 82 kroky.
+- **Renderové studie.** Snímek a živý náhled používají společnou definici
+  kamery, času, vrstev a podmínek. Videosekvence jednorázových efektů
+  vzorkují úvod hustěji a ukládají přesné časy do manifestu.

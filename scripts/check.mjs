@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
-import { createDescriptor, frameFor, groups, initialSettings, presets, qualities, SCHEMA, winds } from '../src/catalog.js';
+import { createDescriptor, frameFor, groups, initialSettings, presets, qualities, SCHEMA, VERSION, winds } from '../src/catalog.js';
+import { studies } from '../src/studies.js';
 import { buildDetailSample, buildSourceModel } from '../src/models.js';
 import { countTriangles, disposeModel } from '../src/viewer.js';
 
@@ -43,6 +44,15 @@ for (const preset of presets) {
   models.set(preset.model, counts);
 }
 assert.equal(presets.length, 17);
+assert.equal(new Set(studies.map(({ id }) => id)).size, studies.length);
+for (const study of studies) {
+  const asset = presets.find(({ id }) => id === study.asset);
+  assert(asset && study.frame >= 0 && study.frame <= asset.duration, study.id);
+}
+assert.equal(models.get('campfire').low, 1400);
+assert(models.get('campfire').cinematic > 30_000);
+assert.equal(models.get('forest').low, 11_440);
+assert(models.get('forest').cinematic > 80_000);
 for (const count of [100, 10_000, 1_000_000]) {
   const sample = buildDetailSample(count);
   assert.equal(countTriangles(sample), count);
@@ -64,7 +74,15 @@ if (zip) {
   };
   const json = (name) => JSON.parse(strFromU8(get(name)));
   const catalog = json('catalog.json');
+  assert.equal(catalog.release, VERSION);
   assert.equal(catalog.assets.length, presets.length);
+  assert.equal(catalog.studies.length, studies.length);
+  for (const study of catalog.studies) {
+    const { path, ...parameters } = study;
+    assert.deepEqual(parameters, studies.find(({ id }) => id === study.id));
+    assert.equal(strFromU8(get(path).subarray(8, 12)), 'WEBP');
+    assert.deepEqual(get(path), new Uint8Array(await readFile('public/renders/' + path)));
+  }
   let variantCount = 0;
   for (const asset of catalog.assets) {
     const preset = presets.find(({ id }) => id === asset.id);
@@ -80,6 +98,17 @@ if (zip) {
     assert.equal(png.getUint32(20), manifest.flipbook.rows * manifest.flipbook.frameHeight);
     assert.equal(png.getUint8(25), 6, 'Atlas must contain alpha');
     assert.equal(manifest.flipbook.loop, !preset.burst);
+    const times = manifest.flipbook.frameTimes;
+    if (preset.burst) {
+      assert.equal(times.length, manifest.flipbook.frameCount);
+      assert.equal(times[0], 0);
+      assert(times[1] < 1 / manifest.flipbook.frameRate);
+      assert(times.every((time, index) => time < preset.duration && (index === 0 || time > times[index - 1])));
+      assert(manifest.flipbook.bakedLayers.includes('dust'));
+    } else {
+      assert.equal(times, undefined);
+      assert(!manifest.flipbook.bakedLayers.includes('dust'));
+    }
     assert.equal(asset.variants.length, winds.length * 2);
     assert.equal(strFromU8(get(folder + manifest.still).subarray(8, 12)), 'WEBP');
     for (const variant of asset.variants) {
@@ -97,7 +126,7 @@ if (zip) {
   }
   assert.deepEqual(catalog.samples.map(({ triangles }) => triangles), [100, 10_000, 1_000_000]);
   for (const sample of catalog.samples) assert.equal(strFromU8(get(sample.file).subarray(0, 4)), 'glTF');
-  console.log('ZIP verified: ' + catalog.assets.length + ' stills and atlases, ' + variantCount + ' condition presets, 45 prop GLBs and 3 detail samples.');
+  console.log('ZIP verified: ' + catalog.assets.length + ' stills and atlases, ' + catalog.studies.length + ' render studies, ' + variantCount + ' condition presets, 45 prop GLBs and 3 detail samples.');
 } else {
   console.log('No baked distribution ZIP present. Run npm run bake to generate it.');
 }

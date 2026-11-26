@@ -17,6 +17,40 @@ function randomStream(seed) {
   };
 }
 
+function radialSurface(rings, segments, sample) {
+  const stride = segments + 1;
+  const positions = new Float32Array(rings * stride * 3);
+  const uv = new Float32Array(rings * stride * 2);
+  const indices = [];
+  for (let row = 0; row < rings; row++) {
+    for (let column = 0; column <= segments; column++) {
+      const index = row * stride + column;
+      const u = column / segments;
+      positions.set(sample(row, (column % segments) / segments * TAU), index * 3);
+      uv.set([u, row / (rings - 1)], index * 2);
+      if (row < rings - 1 && column < segments) {
+        indices.push(index, index + stride, index + stride + 1, index, index + stride + 1, index + 1);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const normals = geometry.attributes.normal;
+  const average = new THREE.Vector3();
+  const seam = new THREE.Vector3();
+  for (let row = 0; row < rings; row++) {
+    const start = row * stride;
+    const end = start + segments;
+    average.fromBufferAttribute(normals, start).add(seam.fromBufferAttribute(normals, end)).normalize();
+    normals.setXYZ(start, average.x, average.y, average.z);
+    normals.setXYZ(end, average.x, average.y, average.z);
+  }
+  return geometry;
+}
+
 function makeContext(name, quality) {
   const lod = Object.hasOwn(LOD, quality) ? LOD[quality] : LOD.balanced;
   const seed = Array.from(name).reduce((hash, char) => Math.imul(hash, 31) + char.charCodeAt(0), 317);
@@ -53,6 +87,7 @@ function makeContext(name, quality) {
     const { variation, geometry: batch } = batches.get(material);
     const points = geometry.attributes.position;
     const incident = geometry.attributes.normal;
+    const pigment = geometry.attributes.color;
     const tint = new Float32Array(points.count * 3);
     const drift = range(-0.28, 0.28);
     for (let i = 0; i < points.count; i++) {
@@ -65,9 +100,9 @@ function makeContext(name, quality) {
       const facing = incident.getY(i) * 0.15;
       const value = 1 - variation * (0.6 + grain + facing + drift);
       const offset = i * 3;
-      tint[offset] = THREE.MathUtils.clamp(value + grain * variation * 0.04, 0, 1);
-      tint[offset + 1] = THREE.MathUtils.clamp(value - grain * variation * 0.03, 0, 1);
-      tint[offset + 2] = THREE.MathUtils.clamp(value - grain * variation * 0.08, 0, 1);
+      tint[offset] = THREE.MathUtils.clamp(value + grain * variation * 0.04, 0, 1) * (pigment?.getX(i) ?? 1);
+      tint[offset + 1] = THREE.MathUtils.clamp(value - grain * variation * 0.03, 0, 1) * (pigment?.getY(i) ?? 1);
+      tint[offset + 2] = THREE.MathUtils.clamp(value - grain * variation * 0.08, 0, 1) * (pigment?.getZ(i) ?? 1);
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(tint, 3));
     if (!geometry.hasAttribute('uv')) geometry.setAttribute('uv', neutralUv(points.count));
@@ -104,7 +139,7 @@ function makeContext(name, quality) {
     add(new THREE.CylinderGeometry(top, base, length, segments), material, at, rotation);
   }
 
-  function rod(from, to, top, base, material, segments = lod.cross, bark = 0) {
+  function rod(from, to, top, base, material, segments = lod.cross, bark = 0, heightSegments = 4) {
     const origin = new THREE.Vector3().fromArray(from);
     const end = new THREE.Vector3().fromArray(to);
     const axis = new THREE.Vector3().subVectors(end, origin);
@@ -116,7 +151,7 @@ function makeContext(name, quality) {
       cylinder(top, base, length, center, material, segments, rotation);
       return;
     }
-    const geometry = new THREE.CylinderGeometry(top, base, length, segments, 4);
+    const geometry = new THREE.CylinderGeometry(top, base, length, segments, heightSegments);
     const points = geometry.attributes.position;
     for (let i = 0; i < points.count; i++) {
       const x = points.getX(i);
@@ -126,7 +161,9 @@ function makeContext(name, quality) {
       const lines = 0.49 * Math.sin(angle * 5 + y * 0.9)
         + 0.35 * Math.sin(angle * 8 + y * 4.1)
         + 0.16 * Math.cos(angle * 3 - y * 11.6);
-      const spread = 1 + bark * lines;
+      const cuts = heightSegments <= 4 ? 0 : 0.09 * Math.sin(angle * 13 + y * 14)
+        - 0.21 * Math.max(0, 1 - 3.7 * Math.abs(Math.sin(angle * 5 - y * 2.6 + 0.5)));
+      const spread = 1 + bark * (lines + cuts);
       points.setXYZ(i, x * spread, y, z * spread);
     }
     geometry.computeVertexNormals();
@@ -134,16 +171,33 @@ function makeContext(name, quality) {
   }
 
   function rock(at, size, material, detail = 0) {
-    const geometry = new THREE.IcosahedronGeometry(1, detail);
+    const geometry = detail < 2
+      ? new THREE.IcosahedronGeometry(1, detail)
+      : new THREE.SphereGeometry(1, detail * 8, detail * 5);
     const points = geometry.attributes.position;
+    const phase = detail < 2 ? 0 : range(0, TAU);
     for (let i = 0; i < points.count; i++) {
       const x = points.getX(i);
       const y = points.getY(i);
       const z = points.getZ(i);
-      const waveform = 1 + 0.16 * Math.sin(x * 5.4 + y * 6.2 + z * 4.8) + 0.06 * Math.cos(x * 17 - z * 8);
+      const planes = 0.16 * Math.sin(x * 5.4 + y * 6.2 + z * 4.8 + phase) + 0.06 * Math.cos(x * 17 - z * 8);
+      const chips = detail < 2 ? 0 : 0.031 * Math.sin(x * 29 + y * 37 - z * 19 + phase)
+        + 0.019 * Math.cos(x * 56 - y * 22 + z * 47);
+      const vein = detail < 2 ? 0 : -0.027 * Math.max(0, 1 - 3.6 * Math.abs(Math.sin(x * 11.2 - y * 19.3 + z * 8.3 + phase)));
+      const waveform = 1 + planes + chips + vein;
       points.setXYZ(i, x * waveform, y * waveform, z * waveform);
     }
     geometry.computeVertexNormals();
+    if (detail >= 2) {
+      // The sphere UV layout duplicates two pole vertices that the index never uses.
+      const normals = geometry.attributes.normal;
+      const direction = new THREE.Vector3();
+      for (let i = 0; i < normals.count; i++) {
+        if (direction.fromBufferAttribute(normals, i).lengthSq() !== 0) continue;
+        direction.fromBufferAttribute(points, i).normalize();
+        normals.setXYZ(i, direction.x, direction.y, direction.z);
+      }
+    }
     add(geometry, material, at, [range(0, Math.PI), range(0, Math.PI), range(0, Math.PI)], size);
   }
 
@@ -175,6 +229,10 @@ function candle(c) {
   const wax = c.surface('Beeswax', 0xddb481, { roughness: 0.7, variation: 0.13 });
   const warmWax = c.surface('Melted wax', 0xedb976, { roughness: 0.48, variation: 0.09 });
   const wick = c.surface('Cotton wick', 0x29201b, { variation: 0.55 });
+  if (c.lod.details > 0.3) {
+    sculptWax(c, wax, warmWax, wick);
+    return;
+  }
   c.cylinder(0.106, 0.113, 0.51, [0, 0.255, 0], wax);
   c.cylinder(0.095, 0.104, 0.021, [0, 0.51, 0], warmWax);
   c.rod([0, 0.51, 0], [0.006, 0.553, -0.004], 0.0035, 0.0055, wick);
@@ -184,6 +242,71 @@ function candle(c) {
     const z = 0.106 * Math.sin(angle);
     const end = c.range(0.31, 0.49);
     c.rod([x * 1.03, end, z * 1.03], [x, 0.518, z], c.range(0.009, 0.014), 0.002, warmWax);
+  }
+}
+
+function sculptWax(c, wax, warmWax, wick) {
+  const cinematic = c.lod.details === 1;
+  const segments = cinematic ? 88 : 44;
+  const outerRows = cinematic ? 27 : 13;
+  const lip = (angle) => Math.sin(angle * 3 + 0.8) * 0.0045 + Math.cos(angle * 5 - 0.8) * 0.0036
+    + Math.sin(angle * 9 + 0.8) * 0.0014;
+  const drips = [
+    [0.28, 0.29, 0.13, 0.0063], [0.91, 0.385, 0.12, 0.0054], [1.57, 0.235, 0.14, 0.0082],
+    [2.31, 0.410, 0.1, 0.004], [3.07, 0.328, 0.13, 0.0065], [4.13, 0.375, 0.12, 0.0067],
+    [4.94, 0.455, 0.09, 0.0035], [5.58, 0.27, 0.15, 0.0068],
+  ];
+  const profile = [[0.0005, 0.001, 0], [0.103, 0.001, 0], [0.109, 0.006, 0], [0.1127, 0.018, 0]];
+  for (let row = 0; row <= outerRows; row++) {
+    const t = row / outerRows;
+    profile.push([0.1134 - t * 0.0073, 0.027 + t * 0.474, t ** 6]);
+  }
+  profile.push([0.104, 0.512, 1], [0.1, 0.518, 1], [0.0963, 0.5195, 1], [0.0909, 0.515, 1],
+    [0.086, 0.5065, 0.75], [0.081, 0.496, 0.42], [0.072, 0.485, 0.12], [0.052, 0.481, 0]);
+  c.add(radialSurface(profile.length, segments, (row, angle) => {
+    const [baseRadius, y, rim] = profile[row];
+    let radius = baseRadius * (1 + 0.012 * Math.sin(angle * 3 + y * 2.5) + 0.004 * Math.sin(angle * 8 - y * 9));
+    for (const [side, end, spread, depth] of drips) {
+      const u = (0.514 - y) / (0.514 - end);
+      if (u < 0 || u >= 1 || baseRadius < 0.099) continue;
+      const slant = side + (u * u - u) * (Math.sin(side) * 0.45);
+      const delta = Math.atan2(Math.sin(angle - slant), Math.cos(angle - slant));
+      const bulb = Math.exp(-(((u - 0.83) / 0.17) ** 2));
+      const width = spread * (0.72 + 0.42 * bulb);
+      radius += depth * Math.exp(-((delta / width) ** 2)) * (0.52 + 0.5 * bulb) * Math.min(1, (1 - u) * 7);
+    }
+    return [radius * Math.cos(angle), y + rim * lip(angle), radius * Math.sin(angle)];
+  }), wax);
+
+  warmWax.roughness = 0.29;
+  const pool = [[0.082, 0.495], [0.080, 0.4955], [0.061, 0.492], [0.044, 0.4915],
+    [0.022, 0.492], [0.008, 0.493], [0.0005, 0.493]];
+  c.add(radialSurface(pool.length, segments, (row, angle) => {
+    const [size, y] = pool[row];
+    const radius = size * (1 + 0.03 * Math.sin(angle * 3 + 0.8) + 0.017 * Math.sin(angle * 5 - 0.8));
+    return [radius * Math.cos(angle), y + (size / 0.082) ** 2 * lip(angle) * 0.18, radius * Math.sin(angle)];
+  }), warmWax);
+
+  const wickCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.003, 0.490, 0.002), new THREE.Vector3(-0.002, 0.510, 0.002),
+    new THREE.Vector3(0.0035, 0.530, 0.001), new THREE.Vector3(0.009, 0.543, -0.005),
+    new THREE.Vector3(0.012, 0.55, -0.012),
+  ]);
+  c.add(new THREE.TubeGeometry(wickCurve, cinematic ? 24 : 10, 0.0032, cinematic ? 9 : 5, false), wick);
+  if (cinematic) {
+    const fibers = c.surface('Scorched wick fibers', 0x493a30, { roughness: 0.91, variation: 0.4 });
+    for (let strand = 0; strand < 3; strand++) {
+      const path = [];
+      for (let row = 0; row <= 22; row++) {
+        const u = row / 24;
+        const angle = u * TAU * 2.6 + strand * TAU / 3;
+        const point = wickCurve.getPoint(u);
+        point.x += Math.cos(angle) * 0.0028;
+        point.z += Math.sin(angle) * 0.0028;
+        path.push(point);
+      }
+      c.add(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(path), 22, 0.0007, 4), fibers);
+    }
   }
 }
 
@@ -213,12 +336,14 @@ function campfire(c) {
   const char = c.surface('Charcoal', 0x1b191b, { variation: 0.55 });
   const ember = c.surface('Live embers', 0xff501a, { heat: 1.45, variation: 0.47 });
   const emberEdge = c.surface('Cooling embers', 0x84220c, { heat: 0.65, variation: 0.37 });
+  const detailed = c.lod.details > 0.3;
+  const cinematic = c.lod.details === 1;
   const stones = 6 + Math.round(c.lod.details * 10);
   for (let i = 0; i < stones; i++) {
     const angle = i / stones * TAU + c.range(-0.075, 0.075);
     const radius = c.range(0.62, 0.72);
     c.rock([Math.cos(angle) * radius, c.range(0.08, 0.13), Math.sin(angle) * radius],
-      [c.range(0.13, 0.22), c.range(0.08, 0.16), c.range(0.12, 0.19)], stone, Number(c.lod.details >= 0.58));
+      [c.range(0.13, 0.22), c.range(0.08, 0.16), c.range(0.12, 0.19)], stone, cinematic ? 3 : Number(detailed));
   }
   for (let i = 0; i < 5; i++) {
     const angle = 0.7 + i * 1.37;
@@ -231,16 +356,33 @@ function campfire(c) {
       level + lift + distance * 0.04,
       dir[1] * distance + dir[0] * (cross + spread),
     ];
-    c.rod(here(-half), here(half), 0.076, 0.103, wood, c.lod.round, 0.24);
+    c.rod(here(-half), here(half), 0.076, 0.103, wood, cinematic ? 52 : c.lod.round,
+      detailed ? 0.33 : 0.24, cinematic ? 13 : (detailed ? 7 : 4));
     const offset = i % 2 === 0 ? 1 : -1;
-    c.rod(here(offset * (half - 0.01)), here(offset * (half + 0.006)), 0.062, 0.069, core);
+    const center = (end) => here(end * (half + 0.003));
+    if (detailed) {
+      const ends = cinematic ? [-1, 1] : [offset];
+      for (const end of ends) {
+        splitEndGrain(c, here(-end * half), center(end), end === 1 ? 0.073 : 0.097, i * 1.7 + end, core);
+      }
+    } else {
+      c.rod(here(offset * (half - 0.01)), here(offset * (half + 0.006)), 0.062, 0.069, core);
+    }
     const strips = 2 + Math.round(c.lod.details * 7);
     for (let j = 0; j < strips; j++) {
       const spread = c.range(-0.052, 0.052);
       const from = c.range(-half, half - 0.12);
       const to = Math.min(half, from + c.range(0.12, 0.58));
       const lift = c.range(0.058, 0.088);
-      c.rod(here(from, lift, spread), here(to, lift, spread), 0.002, c.range(0.007, 0.019), j % 3 === 1 ? emberEdge : char, 5);
+      const glow = j % 3 === 1;
+      const end = detailed && glow ? from + (to - from) * 0.42 : to;
+      c.rod(here(from, lift, spread), here(end, lift, spread), 0.002, c.range(0.007, 0.019), glow ? emberEdge : char, 5);
+      if (cinematic && j % 2 === 0) {
+        const a = from + (end - from) * 0.28;
+        const b = from + (end - from) * 0.57;
+        panel(c, [here(from, lift - 0.004, spread - 0.006), here(a, lift + 0.011, spread - 0.017),
+          here(end, lift - 0.014, spread - 0.006), here(b, lift + 0.003, spread + 0.014)], char, [0, 1, 0]);
+      }
     }
   }
   for (let i = 0; i < Math.ceil(68 * c.lod.details); i++) {
@@ -248,8 +390,43 @@ function campfire(c) {
     const radius = c.range(0.01, 0.57);
     const width = c.range(0.015, 0.057);
     c.rock([Math.cos(angle) * radius, c.range(0.016, 0.115), Math.sin(angle) * radius],
-      [width, width * 0.6, width * 0.7], i % 4 === 0 ? ember : (i % 3 === 0 ? emberEdge : char));
+      [width, width * 0.6, width * 0.7], i % 4 === 0 ? ember : (i % 3 === 0 ? emberEdge : char), Number(cinematic && i % 5 === 0));
   }
+  if (detailed) {
+    const ash = c.surface('Wood ash', 0x5c5655, { roughness: 0.97, variation: 0.47 });
+    const count = cinematic ? 56 : 26;
+    for (let i = 0; i < count; i++) {
+      const angle = c.range(0, TAU);
+      const radius = c.range(0.25, 0.74);
+      const width = c.range(0.011, 0.041);
+      c.rock([Math.cos(angle) * radius, c.range(0.006, 0.023), Math.sin(angle) * radius],
+        [width, width * 0.26, width * 0.66], i % 4 === 0 ? char : ash);
+    }
+  }
+}
+
+function splitEndGrain(c, from, at, size, phase, material) {
+  const cinematic = c.lod.details === 1;
+  const rows = cinematic ? 20 : 13;
+  const columns = cinematic ? 36 : 24;
+  const colors = [];
+  const end = radialSurface(rows, columns, (row, angle) => {
+    const u = 1 - row / (rows - 1);
+    const pith = size * 0.004;
+    const growth = 1 + 0.074 * Math.sin(angle * 3 + phase) + 0.035 * Math.sin(angle * 5 - phase);
+    const radius = Math.max(pith, size * u * growth);
+    const cutPhase = Math.sin(angle * 3 + phase * 0.6 + u * 1.4);
+    const split = Math.max(0, 1 - 12 * Math.abs(cutPhase)) ** 2 * u;
+    const steps = Math.sin(u * 44 + Math.sin(angle * 2 + phase) * u * 0.72 + phase);
+    const edge = u ** 7;
+    const tint = 0.93 - Math.max(0, steps) * 0.18 - split * 0.43 - edge * 0.15;
+    colors.push(tint, tint * (0.95 - edge * 0.10), tint * (0.90 - edge * 0.085));
+    const y = 0.0004 + 0.0016 * Math.sin(angle * 3 + phase) * u + Math.max(0, steps) * 0.0009 - split * 0.0016;
+    return [radius * Math.cos(angle), y, radius * Math.sin(angle)];
+  });
+  end.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  const axis = new THREE.Vector3().fromArray(at).sub(new THREE.Vector3().fromArray(from)).normalize();
+  c.add(end, material, at, new THREE.Quaternion().setFromUnitVectors(UP, axis));
 }
 
 function hay(c) {
@@ -288,18 +465,33 @@ function hay(c) {
   }
 }
 
-function tireGeometry(radius, tube, round, cross, rotation = [0, 0, 0]) {
+function tireGeometry(radius, tube, round, cross, rotation = [0, 0, 0], grooves = false) {
   const geometry = new THREE.TorusGeometry(radius, tube, cross, round);
   const points = geometry.attributes.position;
   const transform = new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation));
   const point = new THREE.Vector3();
+  const pigment = grooves ? new Float32Array(points.count * 3) : null;
   for (let i = 0; i < points.count; i++) {
     point.fromBufferAttribute(points, i);
     const angle = Math.atan2(point.y, point.x);
     const tread = (0.5 + 0.5 * Math.cos(angle * (round / 2))) ** 4;
     const height = Math.atan2(point.z, Math.hypot(point.x, point.y) - radius);
     const outer = 0.5 + 0.5 * Math.cos(height);
-    const deform = tread * outer * outer * tube * 0.22;
+    let deform = tread * outer * outer * tube * 0.22;
+    if (grooves) {
+      const wall = point.z / tube;
+      const radial = Math.cos(height);
+      const treadWidth = THREE.MathUtils.smoothstep(radial, 0.29, 0.58);
+      const phase = angle * Math.floor(round / 4) - Math.abs(wall) * 4.3;
+      const block = THREE.MathUtils.smoothstep(Math.cos(phase), -0.48, 0.26);
+      const shoulder = Math.max(0, 1 - 12 * Math.abs(Math.abs(wall) - 0.61));
+      const center = Math.max(0, 1 - 7 * Math.abs(wall));
+      deform = tube * Math.sign(radial) * (Math.abs(radial) ** 0.66 - Math.abs(radial))
+        + treadWidth * tube * (0.19 * block - 0.102 * Math.max(shoulder, center));
+      point.z = tube * Math.sign(wall) * Math.abs(wall) ** 0.69;
+      const shade = 1 - treadWidth * (0.19 * (1 - block) + 0.1 * Math.max(center, shoulder));
+      pigment.set([shade, shade, shade], i * 3);
+    }
     point.x += Math.cos(angle) * deform;
     point.y += Math.sin(angle) * deform;
     point.z *= 0.86;
@@ -307,6 +499,7 @@ function tireGeometry(radius, tube, round, cross, rotation = [0, 0, 0]) {
     points.setXYZ(i, point.x, point.y, point.z);
   }
   geometry.computeVertexNormals();
+  if (pigment) geometry.setAttribute('color', new THREE.BufferAttribute(pigment, 3));
   return geometry;
 }
 
@@ -322,11 +515,23 @@ function tires(c) {
     [0.72, 0.34, -0.11, 0.43, 0.37, 0.21, 0.30],
     [0.08, 0.41, -0.42, 0.43, -0.54, 0.15, -0.39],
   ];
+  const detailed = c.lod.details > 0.3;
+  const cinematic = c.lod.details === 1;
   for (const [x, y, z, radius, rx, ry, rz] of stack) {
     const orientation = [Math.PI / 2 + rx, ry, rz];
-    c.add(tireGeometry(radius, 0.104, c.lod.round * 2, c.lod.cross, orientation), rubber, [x, y, z]);
-    c.add(new THREE.TorusGeometry(radius - 0.042, 0.012, 5, c.lod.round * 2), sidewall,
-      [x, y + 0.075, z], orientation);
+    const segments = c.lod.round * (cinematic ? 4 : (detailed ? 3 : 2));
+    const cross = cinematic ? 22 : c.lod.cross;
+    c.add(tireGeometry(radius, 0.104, segments, cross, orientation, detailed), rubber, [x, y, z]);
+    if (detailed) {
+      const rotate = new THREE.Euler(...orientation);
+      const center = new THREE.Vector3(x, y, z);
+      const shoulder = new THREE.Vector3(0, 0, -0.081).applyEuler(rotate).add(center).toArray();
+      const bead = new THREE.Vector3(0, 0, -0.060).applyEuler(rotate).add(center).toArray();
+      c.add(new THREE.TorusGeometry(radius + 0.041, 0.0058, 5, segments), sidewall, shoulder, orientation);
+      c.add(new THREE.TorusGeometry(radius - 0.068, 0.0078, 5, segments), sidewall, bead, orientation);
+    } else {
+      c.add(new THREE.TorusGeometry(radius - 0.042, 0.012, 5, segments), sidewall, [x, y + 0.075, z], orientation);
+    }
   }
   for (let i = 0; i < Math.ceil(25 * c.lod.details); i++) {
     c.rock([c.range(-1.1, 1.14), c.range(0.022, 0.05), c.range(-0.5, 0.55)], [0.12, 0.026, 0.098], slag);
@@ -487,9 +692,10 @@ function cylinderProp(c) {
 function forest(c) {
   const bark = c.surface('Pine bark', 0x383027, { variation: 0.63 });
   const bare = c.surface('Dead branches', 0x2c2524, { variation: 0.71 });
-  const tips = c.surface('Needle clusters', 0x373b30, { variation: 0.62 });
-  const shadow = c.surface('Dense needles', 0x30372e, { variation: 0.61 });
-  const pineGreen = c.surface('Dry pine needles', 0x44412e, { variation: 0.58 });
+  const tips = c.surface('Needle clusters', 0x424b35, { variation: 0.62 });
+  const shadow = c.surface('Dense needles', 0x2e3b2d, { variation: 0.61 });
+  const pineGreen = c.surface('Dry pine needles', 0x494530, { variation: 0.58 });
+  const cinematic = c.lod.details === 1;
   const trees = [
     [-3.56, -2.22, 3.82, 0.66], [-2.39, -2.01, 4.46, 0.86], [-1.02, -2.83, 3.11, 0.8],
     [0.42, -2.74, 4.17, 0.91], [2.04, -2.65, 3.55, 0.68], [3.34, -1.86, 4.22, 0.73],
@@ -497,14 +703,15 @@ function forest(c) {
     [1.65, -0.95, 3.06, 0.7],
   ];
 
-  function foliage(at, length, width, height, angle, material) {
-    const geometry = new THREE.IcosahedronGeometry(1, 0);
+  function foliage(at, length, width, height, angle, material, detail) {
+    const geometry = new THREE.IcosahedronGeometry(1, detail);
     const vertices = geometry.attributes.position;
     for (let i = 0; i < vertices.count; i++) {
       const x = vertices.getX(i);
       const narrowing = 0.45 + 0.55 * (1 - x);
-      vertices.setY(i, vertices.getY(i) * narrowing - x * 0.4);
-      vertices.setZ(i, vertices.getZ(i) * narrowing);
+      const scallop = detail ? 1 + 0.18 * Math.sin(x * 17 + angle * 1.3) : 1;
+      vertices.setY(i, vertices.getY(i) * narrowing * scallop - x * 0.4);
+      vertices.setZ(i, vertices.getZ(i) * narrowing * scallop);
     }
     geometry.computeVertexNormals();
     c.add(geometry, material, at, [0, -angle, 0], [length, height, width]);
@@ -514,7 +721,15 @@ function forest(c) {
     const twist = c.range(-0.18, 0.18);
     const slope = c.range(-0.19, 0.19);
     const pt = (y) => [x + slope * (y / height), y, z + twist * (y / height)];
-    c.rod(pt(0), pt(height), 0.016, height * 0.033, bark, c.lod.cross);
+    c.rod(pt(0), pt(height), 0.016, height * 0.033, bark, c.lod.cross, cinematic ? 0.24 : 0, 12);
+    if (cinematic) {
+      for (let i = 0; i < 4; i++) {
+        const a = i * TAU / 4 + height * 1.3;
+        const distance = height * c.range(0.058, 0.102);
+        c.rod(pt(height * 0.051), [x + Math.cos(a) * distance, 0.012, z + Math.sin(a) * distance],
+          0.011, height * 0.018, bark, 5);
+      }
+    }
     const dry = x === -1.55 || x === 1.65;
     const layers = dry ? 4 : 4 + Math.round(2 * c.lod.details);
     for (let tier = 0; tier < layers; tier++) {
@@ -529,6 +744,16 @@ function forest(c) {
         const pitch = c.range(-0.29, 0.055);
         const tip = [center[0] + Math.cos(a) * extent, y + pitch, center[2] + Math.sin(a) * extent];
         c.rod(center, tip, 0.006, 0.042 - f * 0.023, bare, 4);
+        if (cinematic && (dry || i % 2 === 0)) {
+          for (let fork = 1; fork <= 3; fork++) {
+            const t = fork * 0.194 + 0.19;
+            const side = a + (fork % 2 === 0 ? 0.8 : -0.8);
+            const start = [center[0] + (tip[0] - center[0]) * t, y + pitch * t, center[2] + (tip[2] - center[2]) * t];
+            const length = extent * c.range(0.18, 0.34) * (1 - t * 0.52);
+            const end = [start[0] + Math.cos(side) * length, start[1] + length * 0.44, start[2] + Math.sin(side) * length];
+            c.rod(start, end, 0.0022, 0.0093, bare, 3);
+          }
+        }
         if (dry && i % 4 !== 0) continue;
         const leaf = i % 4 === 0 ? pineGreen : (i % 3 === 0 ? tips : shadow);
         const fan = 3 + Math.floor(c.lod.details * 3);
@@ -541,7 +766,8 @@ function forest(c) {
             y - t * 0.07 + 0.025 + c.range(-0.055, 0.078),
             center[2] * (1 - t) + tip[2] * t + Math.sin(pitch) * length * 0.52,
           ];
-          foliage(at, length, length * 0.43, Math.min(0.19, length * 0.42), pitch, j % 4 === 1 ? tips : leaf);
+          const detail = Number(cinematic && j === 1);
+          foliage(at, length, length * 0.43, Math.min(0.19, length * 0.42), pitch, j % 4 === 1 ? tips : leaf, detail);
         }
       }
     }
@@ -566,6 +792,7 @@ function house(c) {
   const eave = 2.13;
   const ridge = 3.37;
   const halfWidth = 2.9;
+  const cinematic = c.lod.details === 1;
   c.box([5.8, 0.18, 3.13], [0, 0.09, 0], stone);
   const windows = [
     { left: -2.43, right: -1.29, bottom: 0.91, top: 1.8 },
@@ -635,8 +862,8 @@ function house(c) {
     const rotation = [sign * (slope - Math.PI / 2), 0, 0];
     const xAngle = sign * slope;
     c.box([6.2, 0.112, slopeLength], [0, ridge - rise / 2, sign * roofDepth / 2], roof, [xAngle, 0, 0]);
-    const courses = 7;
-    const tiles = 13;
+    const courses = cinematic ? 9 : 7;
+    const tiles = cinematic ? 17 : 13;
     for (let j = 0; j < courses; j++) {
       const t = (j + 0.45) / courses;
       const z = sign * roofDepth * t;
@@ -645,11 +872,22 @@ function house(c) {
         c.box([6.13, 0.022, slopeLength / courses * 0.85], [0, y, z], j % 3 === 0 ? brightRoof : roof, [xAngle, 0, 0]);
         continue;
       }
-      for (let i = 0; i < tiles; i++) {
+      const stagger = cinematic && j % 2 === 1;
+      for (let i = 0; i < tiles + Number(stagger); i++) {
         const tileW = 6.2 / tiles;
-        const x = -3.1 + (i + 0.5) * tileW;
+        const left = -3.1 + (i - Number(stagger) * 0.5) * tileW;
+        const right = Math.min(3.1, left + tileW);
+        const clippedLeft = Math.max(-3.1, left);
+        const x = (clippedLeft + right) / 2;
         const shade = x > 0.8 && j < 4 && i % 3 !== 1 ? char : (i % 5 === 0 ? brightRoof : roof);
-        c.box([tileW - 0.019, 0.028, slopeLength / courses * 0.9], [x, y, z], shade, [xAngle, c.range(-0.032, 0.032), 0]);
+        const size = [right - clippedLeft - 0.019, 0.028, slopeLength / courses * 0.9];
+        const rotation = [xAngle, c.range(-0.032, 0.032), 0];
+        if (cinematic) {
+          const chipped = x > 0.68 && j < 5 && (i + j * 2) % 7 === 2;
+          slateShingle(c, size, [x, y, z], rotation, shade, chipped);
+        } else {
+          c.box(size, [x, y, z], shade, rotation);
+        }
       }
     }
     c.box([6.24, 0.129, 0.119], [0, ridge - rise, sign * roofDepth], wood, [xAngle, 0, 0]);
@@ -663,7 +901,36 @@ function house(c) {
   c.box([0.33, 0.026, 0.4], [-1.86, 3.805, -0.39], char);
   for (let i = 0; i < 6; i++) {
     c.box([0.471, 0.014, 0.551], [-1.86, 3.075 + i * 0.107, -0.39], char);
+    if (cinematic) {
+      for (const x of [-2.096, -1.624]) {
+        const offsets = i % 2 === 0 ? [-0.13, 0.06, 0.21] : [-0.19, -0.01, 0.16];
+        for (const offset of offsets) {
+          c.box([0.018, 0.092, 0.013], [x, 3.122 + i * 0.107, -0.39 + offset], char);
+        }
+      }
+    }
   }
+}
+
+function slateShingle(c, size, at, rotation, material, chipped) {
+  const geometry = new THREE.BoxGeometry(...size, 3, 1, 3);
+  const points = geometry.attributes.position;
+  const colors = [];
+  const phase = c.range(0, TAU);
+  for (let i = 0; i < points.count; i++) {
+    const x = points.getX(i);
+    const y = points.getY(i);
+    const z = points.getZ(i);
+    const bend = 0.004 * Math.sin(x * 14 + z * 25 + phase) + 0.0022 * Math.cos(x * 26 - z * 28 + phase);
+    const edge = THREE.MathUtils.smoothstep(z * Math.sign(rotation[0]), 0.04, 0.10);
+    const chip = chipped ? edge * Math.max(0, 0.64 + Math.sin(x * 31 + phase) * 0.61) : 0;
+    points.setXYZ(i, x * (1 - edge * 0.038), y + bend - chip * 0.013, z - chip * 0.067 * Math.sign(rotation[0]));
+    const grain = 0.99 - 0.095 * (0.5 + 0.5 * Math.sin(x * 31 + z * 15 + phase)) - chip * 0.22;
+    colors.push(grain, grain, grain * (1 - 0.04 * edge));
+  }
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.computeVertexNormals();
+  c.add(geometry, material, at, rotation);
 }
 
 function brush(c) {

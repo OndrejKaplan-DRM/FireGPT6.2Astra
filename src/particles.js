@@ -2,7 +2,9 @@ import * as THREE from 'three';
 
 const pointVertex = /* glsl */`
   attribute float energy;
+  attribute float cooling;
   varying float heat;
+  varying float age;
   uniform float pixels;
   uniform float scale;
   void main() {
@@ -10,34 +12,43 @@ const pointVertex = /* glsl */`
     gl_Position = projectionMatrix * p;
     gl_PointSize = clamp(pixels * scale / max(.1, -p.z) * (.78 + energy * .95), 1.5, 17.);
     heat = energy;
+    age = cooling;
   }
 `;
 
 const pointFragment = /* glsl */`
   varying float heat;
+  varying float age;
   void main() {
     float d = length(gl_PointCoord - .5) * 2.;
     float hot = exp(-d*d*13.);
     float halo = exp(-d*d*4.9) * .24;
     float alpha = (hot + halo) * heat * (1. - smoothstep(.78, 1., d));
-    vec3 color = mix(vec3(2.1,.14,.012), vec3(5.4,1.45,.21), hot);
+    vec3 fresh = mix(vec3(1.9,.37,.06), vec3(5.4,2.45,.94), hot);
+    vec3 cooled = mix(vec3(.42,.017,.003), vec3(2.9,.21,.022), hot);
+    vec3 color = mix(fresh, cooled, smoothstep(.04, .89, age));
     gl_FragColor = vec4(color, alpha);
   }
 `;
 
 const lineVertex = /* glsl */`
   attribute float energy;
+  attribute float cooling;
   varying float heat;
+  varying float age;
   void main() {
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
     heat = energy;
+    age = cooling;
   }
 `;
 
 const lineFragment = /* glsl */`
   varying float heat;
+  varying float age;
   void main() {
-    gl_FragColor = vec4(3.3, .64, .08, heat * .66);
+    vec3 color = mix(vec3(3.6, .91, .23), vec3(.88, .043, .005), smoothstep(.08,.95,age));
+    gl_FragColor = vec4(color, heat * .60);
   }
 `;
 
@@ -53,13 +64,15 @@ export function createParticles(maxParticles = 420) {
   const group = new THREE.Group();
   const points = new THREE.BufferGeometry();
   const lines = new THREE.BufferGeometry();
+  const maxSegments = 3;
   function streams(geometry, count) {
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('energy', new THREE.BufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage));
+    geometry.setAttribute('cooling', new THREE.BufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage));
     return geometry.attributes;
   }
   const p = streams(points, maxParticles);
-  const l = streams(lines, maxParticles * 2);
+  const l = streams(lines, maxParticles * maxSegments * 2);
   const pointMaterial = new THREE.ShaderMaterial({
     vertexShader: pointVertex, fragmentShader: pointFragment,
     uniforms: { pixels: { value: 500 }, scale: { value: .01 } },
@@ -86,6 +99,7 @@ export function createParticles(maxParticles = 420) {
     }
     const single = asset.id === 'spark';
     const amount = Math.min(maxParticles, Math.round(count * asset.spark * (single ? .37 : 1)));
+    const segments = settings.quality === 'low' ? 1 : maxSegments;
     let alive = 0;
     pointMaterial.uniforms.pixels.value = pixels;
     pointMaterial.uniforms.scale.value = Math.max(asset.height, .33) * (single ? .032 : .012);
@@ -103,7 +117,7 @@ export function createParticles(maxParticles = 420) {
           : (single ? .025 : .18) * place + t * (.12 + .28 * speed);
         const arc = asset.burst ? (1.22 - .55 * t) * t * (.35 + speed * 1.3)
           : (single ? (2.62 - 2.18 * t) : 1.46 - t * .2) * t * (.31 + speed * .79);
-        const wobble = Math.sin(t * 7 + drift * 27) * .074 * t;
+        const wobble = (Math.sin(t * 9 + drift * 27) * .074 + Math.sin(t * 23 + phase * 14) * .016) * t;
         return [
           (cosine * dist + bend * t * t * .86 + wobble) * asset.width,
           asset.base + Math.max(-.03 / asset.height, arc) * asset.height,
@@ -111,18 +125,30 @@ export function createParticles(maxParticles = 420) {
         ];
       };
       const head = position(age);
-      const tail = position(Math.max(0, age - (single || asset.burst ? .025 + streak * .05 : .012 + streak * .021)));
+      const trail = single || asset.burst ? .027 + streak * .066 : .009 + streak * .036;
       p.position.setXYZ(alive, ...head);
       p.energy.setX(alive, strength);
-      l.position.setXYZ(alive * 2, ...tail);
-      l.position.setXYZ(alive * 2 + 1, ...head);
-      l.energy.setX(alive * 2, 0);
-      l.energy.setX(alive * 2 + 1, strength);
+      p.cooling.setX(alive, age);
+      let next = head;
+      for (let segment = 0; segment < segments; segment++) {
+        const u = segment / segments;
+        const v = (segment + 1) / segments;
+        const i = (alive * segments + segment) * 2;
+        const t = Math.max(0, age - trail * v);
+        const previous = position(t);
+        l.position.setXYZ(i, ...next);
+        l.position.setXYZ(i + 1, ...previous);
+        l.energy.setX(i, strength * (1 - u) ** 1.5);
+        l.energy.setX(i + 1, strength * (1 - v) ** 1.5);
+        l.cooling.setX(i, Math.min(age + u * .55, 1));
+        l.cooling.setX(i + 1, Math.min(age + v * .55, 1));
+        next = previous;
+      }
       alive++;
     }
-    for (const attr of [p.position, p.energy, l.position, l.energy]) attr.needsUpdate = true;
+    for (const attr of [...Object.values(p), ...Object.values(l)]) attr.needsUpdate = true;
     points.setDrawRange(0, alive);
-    lines.setDrawRange(0, alive * 2);
+    lines.setDrawRange(0, alive * segments * 2);
   }
 
   return { group, update, count: () => points.drawRange.count };

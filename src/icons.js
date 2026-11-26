@@ -22,6 +22,7 @@ import pause from 'lucide/icons/pause.svg?raw';
 import play from 'lucide/icons/play.svg?raw';
 import repeat from 'lucide/icons/repeat.svg?raw';
 import rotate from 'lucide/icons/rotate-ccw.svg?raw';
+import scanLine from 'lucide/icons/scan-line.svg?raw';
 import search from 'lucide/icons/search.svg?raw';
 import sliders from 'lucide/icons/sliders-horizontal.svg?raw';
 import trees from 'lucide/icons/trees.svg?raw';
@@ -32,7 +33,7 @@ const icons = {
   box, boxes, 'chevron-down': chevronDown, 'chevron-left': chevronLeft, 'chevron-right': chevronRight,
   download, 'file-json': fileJson, flame, 'flame-kindling': kindling, gauge, github, 'grid-3x3': grid,
   image, 'layers-3': layers, 'library-big': library, maximize, minimize, mouse, orbit, package: packageIcon,
-  pause, play, repeat, 'rotate-ccw': rotate, search, 'sliders-horizontal': sliders, trees, wind, zap,
+  pause, play, repeat, 'rotate-ccw': rotate, 'scan-line': scanLine, search, 'sliders-horizontal': sliders, trees, wind, zap,
 };
 
 export function icon(name) {

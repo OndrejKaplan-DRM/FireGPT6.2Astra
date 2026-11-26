@@ -16,5 +16,15 @@
   velikosti viewportu. Zapsat GPU, ovladač, scénář, rozlišení a časy snímků.
 - [ ] Ověřit barevný prostor a import alfy v cílovém herním enginu při
   výběru jeho konkrétní verze a render pipeline.
-- [ ] Další stupeň vizuální věrnosti. Referenční srovnání jednotlivých
-  materiálů, detailní PBR povrchy a více pohledů pro snímkové atlasy.
+- [ ] Více pohledů pro snímkové atlasy a další detail povrchů podle referencí.
+
+## v0.2.0
+
+- [x] Zdokumentovat 100 obrazových referencí v `REFERENCES.md`.
+- [x] Změna barevné palety a tvarů plamene, kouře, jisker a refrakce.
+- [x] Oddělit prach od kouře a samostatně zobrazit fáze krátkých efektů.
+- [x] Zvýšit detail pěti rodin geometrie a zachovat nízké rozpočty LOD.
+- [x] Přidat opakovatelné záběry pro detaily, podmínky a fáze animací.
+- [x] Ověřit produkční sestavení, 48 renderů, alfu 17 atlasů, integritu ZIP
+  a shodu všech počtů trojúhelníků T460 s v0.1.0.
+- [ ] Porovnat render a import atlasu s `frameTimes` v cílovém enginu.

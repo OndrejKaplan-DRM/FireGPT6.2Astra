@@ -2,22 +2,23 @@ import { execFileSync } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { chromium } from 'playwright-core';
-import { winds } from '../src/catalog.js';
+import { VERSION, winds } from '../src/catalog.js';
 import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((arg) => arg.startsWith('--' + name + '='))?.split('=')[1];
 const selected = flag('ids')?.split(',');
+const studyIds = flag('study-ids')?.split(',');
 const stillsOnly = args.includes('--stills-only');
 const skipBuild = args.includes('--skip-build');
 const sample = !args.includes('--no-detail');
-const frameSize = Number(flag('size') ?? 96);
+const frameSize = Number(flag('size') ?? 112);
 if (!Number.isInteger(frameSize) || frameSize < 32 || frameSize > 256) throw new Error('Use --size=32…256.');
-if (selected && !stillsOnly) throw new Error('Subset selection requires --stills-only.');
+if ((selected || studyIds) && !stillsOnly) throw new Error('Subset selection requires --stills-only.');
 
 const root = resolve('dist');
 const output = resolve('public');
-await mkdir(resolve(output, 'renders'), { recursive: true });
+await mkdir(resolve(output, 'renders/studies'), { recursive: true });
 await mkdir(resolve(output, 'dataset'), { recursive: true });
 if (!skipBuild) execFileSync(process.execPath, ['node_modules/vite/bin/vite.js', 'build'], { stdio: 'inherit' });
 
@@ -66,8 +67,9 @@ try {
   await page.goto(localOrigin + '/?bake=1');
   await page.waitForFunction(() => Boolean(window.fireBake), { timeout: 30_000 });
   const catalog = await page.evaluate(() => window.fireBake.catalog());
+  const shots = await page.evaluate(() => window.fireBake.studies());
 
-  for (const asset of catalog.filter((a) => !selected || selected.includes(a.id))) {
+  for (const asset of catalog.filter((a) => !studyIds && (!selected || selected.includes(a.id)))) {
     const id = asset.id;
     const data = await page.evaluate((name) => window.fireBake.still(name), id);
     if (browserErrors.length) throw new Error('Rendering failed for ' + id + '.');
@@ -116,6 +118,20 @@ try {
     console.log(id + ' · ' + Math.round((png.length + still.length) / 1024) + ' KiB · ' + JSON.stringify(geometry));
   }
 
+  const renderedStudies = [];
+  for (const shot of shots.filter((study) =>
+    studyIds ? studyIds.includes(study.id) : !selected || selected.includes(study.asset))) {
+    const data = await page.evaluate((study) =>
+      window.fireBake.still(study.asset, 'cinematic', null, 960, 592, study), shot);
+    if (browserErrors.length || data.length < 500) throw new Error('Study rendering failed for ' + shot.id);
+    const still = Buffer.from(data);
+    const path = 'studies/' + shot.id + '.webp';
+    await writeFile(resolve(output, 'renders', path), still);
+    if (!stillsOnly) archive[path] = [still, { level: 0 }];
+    renderedStudies.push({ ...shot, path });
+    console.log(shot.id + ' · ' + Math.round(still.length / 1024) + ' KiB');
+  }
+
   if (!stillsOnly) {
     const samples = [];
     if (sample) {
@@ -129,7 +145,7 @@ try {
       }
     }
     archive['catalog.json'] = strToU8(JSON.stringify({
-      schema: 'fire-asset-lab/dataset@1', release: '0.1.0', assets: index, samples,
+      schema: 'fire-asset-lab/dataset@1', release: VERSION, assets: index, studies: renderedStudies, samples,
     }, null, 2) + '\n');
     archive['README.md'] = new Uint8Array(await readFile('ASSETS.md'));
     await writeFile(resolve(output, 'dataset/fire-asset-lab.zip'), zipSync(archive, { level: 5 }));

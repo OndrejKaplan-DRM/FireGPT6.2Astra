@@ -1,5 +1,5 @@
 export const SCHEMA = 'fire-asset-lab/preset@1';
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.0';
 
 export const groups = [
   { id: 'detail', label: 'Drobné efekty', icon: 'flame' },
@@ -11,8 +11,8 @@ export const groups = [
 
 export const qualities = {
   low: { label: 'T460', scale: 0.68, maxPixels: 355_000, steps: 22, octaves: 3, particles: 72, shadow: 0, exposure: 1 },
-  balanced: { label: 'Balanced', scale: 0.9, maxPixels: 850_000, steps: 39, octaves: 4, particles: 210, shadow: 512, exposure: 1 },
-  cinematic: { label: 'Cinematic', scale: 1.15, maxPixels: 1_600_000, steps: 62, octaves: 5, particles: 420, shadow: 1024, exposure: 1 },
+  balanced: { label: 'Balanced', scale: 0.9, maxPixels: 850_000, steps: 44, octaves: 4, particles: 210, shadow: 512, exposure: 1 },
+  cinematic: { label: 'Cinematic', scale: 1.15, maxPixels: 1_600_000, steps: 82, octaves: 6, particles: 420, shadow: 1024, exposure: 1 },
 };
 
 export const winds = [
@@ -27,6 +27,7 @@ export const layers = [
   { id: 'smoke', label: 'Kouř', color: '#b9b0aa' },
   { id: 'sparks', label: 'Jiskry', color: '#ffbf69' },
   { id: 'heat', label: 'Chvění vzduchu', color: '#7ca0ac' },
+  { id: 'dust', label: 'Prach', color: '#b59576', burstOnly: true },
 ];
 
 const preset = (id, group, name, material, description, model, dims, art, options = {}) => ({
@@ -42,6 +43,8 @@ const preset = (id, group, name, material, description, model, dims, art, option
   wind: options.wind ?? 1,
   oxygen: options.oxygen ?? 1,
   burst: group === 'burst',
+  // Artistic clip controls in order: plume shape, flash fade, smoke opacity, dust opacity.
+  burstLook: options.burstLook ?? null,
   tags: options.tags ?? [],
 });
 
@@ -61,7 +64,7 @@ export const presets = [
   preset('hay', 'material', 'Hořící stoh', 'Sláma', 'Rozptýlený plamen přes slámu s lehkými odlétajícími uhlíky.', 'hay',
     [3.1, 2.95, 0.86], [1.27, 0.64, 0.29, 0.85], { shape: 'front', depth: 2.05, tags: ['vlákna', 'rozptýlený'] }),
   preset('tires', 'material', 'Hořící pneumatiky', 'Pryž a saze', 'Tmavý, opticky hustý kouř se záblesky plamenů mezi pneumatikami.', 'tires',
-    [2.17, 2.55, 0.35], [0.8, 1.64, 0.94, 0.23], { shape: 'front', oxygen: 0.43, tags: ['saze', 'hutný kouř'] }),
+    [2.17, 2.55, 0.35], [0.71, 1.73, 0.94, 0.23], { shape: 'front', oxygen: 0.43, tags: ['saze', 'hutný kouř'] }),
   preset('diesel', 'material', 'Rozlitá nafta · 20 l', 'Kapalina', 'Mělká louže s ohnivým lemem a nepravidelnými výšlehy po hladině.', 'spill',
     [2.74, 1.47, 0.04], [1.3, 0.96, 0.76, 0.18], { shape: 'front', depth: 1.65, tags: ['povrch', 'kapalina'] }),
   preset('car', 'scene', 'Požár auta', 'Kov, plast a sklo', 'Nepravidelný požár karoserie se zřetelným zdrojem nad přední částí.', 'car',
@@ -73,13 +76,13 @@ export const presets = [
   preset('house', 'scene', 'Požár domu', 'Dřevo a zdivo', 'Plameny podél fasády a střechy s kouřem v horní části záběru.', 'house',
     [5.6, 4.76, 0.62], [1.26, 1.1, 0.65, 0.64], { shape: 'front', depth: 3.45, tags: ['stavba', 'velký'] }),
   preset('barrel', 'burst', 'Výbuch sudu s benzínem', 'Filmová ohnivá koule', 'Krátký oranžový záblesk se stoupající ohnivou koulí a doznívajícím kouřem.', 'drum',
-    [2.72, 3.2, 0.62], [1.5, 0.95, 0.61, 0.86], { shape: 'burst', duration: 5, tags: ['záblesk', 'jednorázový'] }),
+    [2.72, 3.2, 0.62], [1.5, 0.95, 0.61, 0.86], { shape: 'burst', duration: 5, burstLook: [.38, 13.8, .95, .27], tags: ['záblesk', 'jednorázový'] }),
   preset('acetylene', 'burst', 'Výbuch tlakové lahve', 'Filmový VFX · acetylen', 'Úzký světelný impuls s rychle rozvinutým kouřovým oblakem.', 'cylinder',
-    [1.94, 3.25, 0.66], [1.68, 0.65, 0.32, 0.64], { shape: 'burst', duration: 5, tags: ['záblesk', 'jednorázový'] }),
-  preset('grenade', 'burst', 'Výbuch granátu', 'Filmový VFX', 'Rychlý záblesk u země s jiskrami a prachovým dozvukem.', 'none',
-    [1.9, 1.6, 0.24], [1.45, 0.78, 0.35, 1], { shape: 'burst', duration: 4, tags: ['prach', 'jednorázový'] }),
-  preset('tnt', 'burst', 'Výbuch ve velkém sudu', 'Filmový VFX · 1 t TNT', 'Široká filmová ohnivá koule s déle doznívajícím kouřem.', 'drum',
-    [9.4, 10.5, 0.68], [1.82, 1.4, 0.81, 0.9], { shape: 'burst', duration: 8, scale: 2.2, tags: ['kouřový oblak', 'jednorázový'] }),
+    [1.94, 3.25, 0.66], [1.68, 0.65, 0.32, 0.64], { shape: 'burst', duration: 5, burstLook: [.98, 23, .52, .27], tags: ['záblesk', 'jednorázový'] }),
+  preset('grenade', 'burst', 'Výbuch granátu', 'Filmový VFX', 'Nízký světelný impuls, zrnitý prach při zemi a malý neutrální oblak.', 'none',
+    [1.9, 1.6, 0.24], [1.47, 0.89, 0.23, .58], { shape: 'burst', duration: 4, wind: 0, burstLook: [.08, 76, .34, 1.79], tags: ['prach', 'jednorázový'] }),
+  preset('tnt', 'burst', 'Výbuch ve velkém sudu', 'Filmový VFX · 1 t TNT', 'Krátký teplý záblesk přechází do členitého tmavého oblaku a prachového závoje.', 'drum',
+    [9.4, 10.5, 0.68], [1.82, 1.4, 0.81, 0.9], { shape: 'burst', duration: 8, scale: 2.2, burstLook: [.51, 19, 1.72, .8], tags: ['kouřový oblak', 'jednorázový'] }),
 ];
 
 const modelHeights = { candle: 0.56, torch: 1.26, campfire: 0.35, hay: 1.1, tires: 0.9, car: 1.2, drum: 1.08, cylinder: 1.03, forest: 4.5, house: 3.8, brush: 1 };
@@ -111,6 +114,6 @@ export function initialSettings(asset, quality = 'balanced') {
     wind: asset.wind,
     oxygen: asset.oxygen,
     seed: 37,
-    layers: { flame: true, smoke: true, sparks: true, heat: true },
+    layers: { flame: true, smoke: true, sparks: true, heat: true, dust: true },
   };
 }

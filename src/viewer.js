@@ -5,6 +5,8 @@ import { buildSourceModel } from './models.js';
 import { createParticles } from './particles.js';
 import { makeNoiseTexture, makeVolumeMaterial } from './volume.js';
 
+const legacyBurstLook = [.5, 13, 1, 0];
+
 export function countTriangles(root) {
   let count = 0;
   root.traverse((object) => {
@@ -61,6 +63,28 @@ function makeFloor() {
   return floor;
 }
 
+function makeRefractionBackdrop() {
+  const pattern = document.createElement('canvas');
+  pattern.width = 768;
+  pattern.height = 512;
+  const ctx = pattern.getContext('2d');
+  ctx.fillStyle = '#22262c';
+  ctx.fillRect(0, 0, pattern.width, pattern.height);
+  for (let x = 32; x < pattern.width; x += 32) {
+    ctx.fillStyle = x % 128 ? '#4c555c' : '#71808b';
+    ctx.fillRect(x, 0, x % 128 ? 2 : 3, pattern.height);
+  }
+  for (let y = 32; y < pattern.height; y += 32) {
+    ctx.fillStyle = y % 128 ? '#4c555c' : '#71808b';
+    ctx.fillRect(0, y, pattern.width, y % 128 ? 2 : 3);
+  }
+  const texture = new THREE.CanvasTexture(pattern);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.8, 2.6), new THREE.MeshBasicMaterial({ map: texture, fog: false }));
+  panel.visible = false;
+  return panel;
+}
+
 export function createViewer(canvas, { orbit = true } = {}) {
   const renderer = new THREE.WebGLRenderer({
     canvas, alpha: true, antialias: false, premultipliedAlpha: false, powerPreference: 'high-performance',
@@ -89,6 +113,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x141519, .1);
   const floor = makeFloor();
+  const backdrop = makeRefractionBackdrop();
   const grid = new THREE.GridHelper(30, 60, 0x514c43, 0x514c43);
   grid.position.y = -.007;
   grid.material.transparent = true;
@@ -96,8 +121,8 @@ export function createViewer(canvas, { orbit = true } = {}) {
   grid.material.depthWrite = false;
   grid.visible = false;
 
-  scene.add(floor, grid, new THREE.HemisphereLight(0xbfc7d3, 0x3b221b, 1.0));
-  const key = new THREE.DirectionalLight(0xffdfc5, 1.32);
+  scene.add(floor, grid, backdrop, new THREE.HemisphereLight(0xcbd3dd, 0x39312c, 1.12));
+  const key = new THREE.DirectionalLight(0xffead9, 1.27);
   key.position.set(-3, 6, 4);
   key.castShadow = true;
   key.shadow.bias = -.00028;
@@ -107,8 +132,8 @@ export function createViewer(canvas, { orbit = true } = {}) {
   const rim = new THREE.DirectionalLight(0x9eacc9, 1.12);
   rim.position.set(2, 4, -5);
   scene.add(rim);
-  const warm = new THREE.PointLight(0xff6a20, 1.7, 8, 2);
-  const pool = new THREE.PointLight(0xff510a, .55, 5, 2);
+  const warm = new THREE.PointLight(0xff8f44, 1.7, 8, 2);
+  const pool = new THREE.PointLight(0xff752e, .55, 5, 2);
   scene.add(warm, pool);
   const sparks = createParticles();
   scene.add(sparks.group);
@@ -124,6 +149,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
   let model;
   let tris = 0;
   let modelQuality;
+  let emissionMaterials = [];
   let displayWidth = 1;
   let displayHeight = 1;
   let pixelScale = 1;
@@ -131,11 +157,18 @@ export function createViewer(canvas, { orbit = true } = {}) {
   let cssHeight = 1;
   let useGrid = false;
   let wireframe = false;
+  let useBackdrop = false;
+  const center = new THREE.Vector3();
+  const behind = new THREE.Vector3();
+  let cameraSpan = 1;
 
-  function frame(view = 'orbit') {
-    const { target: height, span } = frameFor(asset);
+  function frame(view = 'orbit', framing = 'scene') {
+    const standard = frameFor(asset);
+    const height = framing === 'detail' ? asset.base + asset.height * .42 : standard.target;
+    const span = framing === 'detail' ? Math.max(asset.height * 1.41, asset.width * .78, .095) : standard.span;
+    cameraSpan = span;
     const distance = span * (camera.aspect < 1 ? 1.83 / Math.max(camera.aspect, .56) : 1.77);
-    const center = new THREE.Vector3(asset.width * winds[asset.wind].bend * .24, height, 0);
+    center.set(asset.width * winds[asset.wind].bend * .24, height, 0);
     if (view === 'front') camera.position.set(center.x, height + span * .095, distance);
     else if (view === 'side') camera.position.set(distance, height + span * .12, 0);
     else if (view === 'top') camera.position.set(center.x, height + distance, .004);
@@ -170,8 +203,12 @@ export function createViewer(canvas, { orbit = true } = {}) {
       }
       model = buildSourceModel(asset.model, quality);
       model.scale.setScalar(asset.scale);
+      emissionMaterials = [];
       model.traverse((object) => {
         if (object.isMesh) {
+          for (const m of [object.material].flat()) {
+            if (m?.emissiveIntensity > 0 && m.name?.includes('embers')) emissionMaterials.push([m, m.emissiveIntensity]);
+          }
           object.castShadow = true;
           object.receiveShadow = true;
         }
@@ -223,13 +260,24 @@ export function createViewer(canvas, { orbit = true } = {}) {
     const wind = winds[settings.wind].bend;
     floor.visible = !transparent;
     grid.visible = useGrid && !transparent;
+    backdrop.visible = useBackdrop && !transparent;
+    if (backdrop.visible) {
+      camera.getWorldDirection(behind);
+      backdrop.position.copy(controls?.target ?? center).addScaledVector(behind, cameraSpan * 1.52);
+      backdrop.quaternion.copy(camera.quaternion);
+      backdrop.scale.setScalar(cameraSpan);
+    }
     model.visible = !transparent;
     const active = settings.layers;
     const age = time / asset.duration;
+    const burstLook = asset.burstLook ?? legacyBurstLook;
+    for (const [i, [m, original]] of emissionMaterials.entries()) {
+      m.emissiveIntensity = original * (.80 + .13 * Math.sin(time * 2.7 + i * 1.1) + .08 * Math.sin(time * 6.35 + i));
+    }
     const flutter = .81 + .12 * Math.sin(time * 7.2) + .08 * Math.sin(time * 13.1 + 1.4);
-    const lightActivity = asset.burst ? Math.min(age * 55, 1) * Math.exp(-age * 13) * 1.4 : flutter;
+    const lightActivity = asset.burst ? Math.min(age * 90, 1) * Math.exp(-age * burstLook[1]) * 1.5 : flutter;
     warm.position.set(wind * asset.width * .15, asset.base + asset.height * .18, asset.depth * .12);
-    warm.intensity = (active.flame ? asset.emission : 0) * lightActivity * asset.height ** 2 * 5.1;
+    warm.intensity = (active.flame ? asset.emission : 0) * lightActivity * asset.height ** 2 * 4.15;
     warm.distance = Math.max(asset.height * 4.8, .88);
     pool.position.set(-asset.width * .13, asset.base + asset.height * .085, -asset.depth * .19);
     pool.intensity = warm.intensity * .47;
@@ -246,15 +294,17 @@ export function createViewer(canvas, { orbit = true } = {}) {
     u.worldMatrix.value.copy(camera.matrixWorld);
     u.eye.value.copy(camera.position);
     u.extent.value.set(asset.width, asset.height, asset.depth);
-    u.boxMin.value.set(-asset.width * .94, Math.max(-.007, asset.base - asset.height * .14), -asset.depth * .98);
+    u.boxMin.value.set(-asset.width * .94, Math.max(-.007, asset.base - asset.height * (asset.burst ? .22 : .14)), -asset.depth * .98);
     u.boxMax.value.set(asset.width * (.98 + wind * 2.35), asset.base + asset.height * 2.04, asset.depth * .95);
     u.base.value = asset.base;
+    u.burstLook.value.fromArray(burstLook);
     u.time.value = time;
     u.seed.value = (settings.seed % 2009) / 2009 * 37.1;
     u.bend.value = wind;
     u.oxygen.value = settings.oxygen;
     u.emission.value = active.flame ? asset.emission : 0;
     u.smoke.value = active.smoke ? asset.smoke : 0;
+    u.dustStrength.value = asset.burst && active.dust !== false ? asset.smoke : 0;
     u.soot.value = asset.soot;
     u.turbulence.value = asset.turbulence;
     u.thermal.value = active.heat ? asset.thermal : 0;
@@ -273,6 +323,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
     configure, resize, render, frame, setWireframe,
     onChange: (callback) => controls?.addEventListener('change', callback),
     setGrid: (value) => { useGrid = value; },
+    setBackdrop: (value) => { useBackdrop = value; },
     triangles: () => tris,
     stats: () => ({ width: displayWidth, height: displayHeight, pixels: sparks.count(), hdr }),
     dispose: () => {
@@ -280,6 +331,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
       disposeModel(scene);
       disposeModel(screen);
       floor.material.map.dispose();
+      backdrop.material.map.dispose();
       target.dispose();
       noise.dispose();
       renderer.dispose();

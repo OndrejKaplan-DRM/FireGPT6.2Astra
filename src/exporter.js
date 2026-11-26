@@ -44,13 +44,18 @@ export async function renderFlipbook(viewer, source, asset, settings, options = 
   viewer.resize(size, size, settings.quality, { bake: true });
   viewer.configure(asset, settings.quality, true);
   const frameRate = frameCount / asset.duration;
+  // Explicit sample times preserve the first flash of one-shot clips.
+  const frameTimes = asset.burst ? Array.from({ length: frameCount }, (_, n) => {
+    const progress = n / frameCount;
+    return asset.duration * progress * progress;
+  }) : null;
   const tailFrames = !asset.burst ? Math.min(5, Math.floor(frameCount / 8)) : 0;
   for (let n = 0; n < frameCount; n++) {
     const x = n % columns * size;
     const y = Math.floor(n / columns) * size;
     const overlap = Math.max(n - (frameCount - tailFrames) + 1, 0) / (tailFrames + 1);
     const mix = overlap ** 2 * (3 - 2 * overlap);
-    viewer.render((n + tailFrames) / frameRate, settings, { transparent: true });
+    viewer.render(frameTimes?.[n] ?? (n + tailFrames) / frameRate, settings, { transparent: true });
     ctx.globalAlpha = 1 - mix;
     ctx.drawImage(source, x, y, size, size);
     if (overlap) {
@@ -70,9 +75,10 @@ export async function renderFlipbook(viewer, source, asset, settings, options = 
     ...createDescriptor(asset, settings),
     flipbook: {
       file: 'flipbook.png', frameCount, frameRate, columns, rows,
+      ...(frameTimes ? { frameTimes, sampling: 'nonuniform; interpolate using frameTimes (seconds)' } : {}),
       frameWidth: size, frameHeight: size, order: 'row-major, left-to-right, top-to-bottom',
       alpha: 'straight', colorSpace: 'sRGB', camera: 'orbit',
-      loop: !asset.burst, bakedLayers: ['flame', 'smoke', 'sparks'].filter((id) => settings.layers[id]),
+      loop: !asset.burst, bakedLayers: ['flame', 'smoke', 'sparks', ...(asset.burst ? ['dust'] : [])].filter((id) => settings.layers[id]),
     },
   };
   return { png: await canvasBlob(canvas), manifest };
