@@ -571,7 +571,18 @@ function panel(c, points, material, facing) {
   const a = new THREE.Vector3().fromArray(points[0]);
   const b = new THREE.Vector3().fromArray(points[1]).sub(a);
   const d = new THREE.Vector3().fromArray(points[2]).sub(a);
-  const backwards = b.cross(d).dot(new THREE.Vector3().fromArray(facing)) < 0;
+  const normal = new THREE.Vector3().fromArray(facing).normalize();
+  const backwards = b.cross(d).dot(normal) < 0;
+  // Project at one texture repeat per metre, using the same basis for faces with the same facing.
+  const up = Math.abs(normal.y) >= 0.999 ? new THREE.Vector3(0, 0, 1) : UP;
+  const tangent = new THREE.Vector3().crossVectors(up, normal).normalize();
+  const bitangent = new THREE.Vector3().crossVectors(normal, tangent);
+  const point = new THREE.Vector3();
+  const uv = points.flatMap((position) => {
+    point.fromArray(position);
+    return [point.dot(tangent), point.dot(bitangent)];
+  });
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   const index = [];
   for (let i = 1; i < points.length - 1; i++) {
     if (backwards) index.push(0, i + 1, i);
@@ -685,8 +696,23 @@ function cylinderProp(c) {
     [0, 0.02], [0.239, 0.02], [0.268, 0.065], [0.271, 0.73],
     [0.26, 0.83], [0.217, 0.91], [0.145, 0.969], [0.062, 0.988], [0, 0.99],
   ];
-  c.add(new THREE.LatheGeometry(points.map(([x, y]) => new THREE.Vector2(x, y)), c.lod.round), enamel);
-  c.cylinder(0.269, 0.257, 0.052, [0, 0.044, 0], dark);
+  const shell = new THREE.LatheGeometry(points.map(([x, y]) => new THREE.Vector2(x, y)), c.lod.round);
+  const vertices = shell.attributes.position;
+  const triangle = new THREE.Triangle();
+  const indices = [];
+  // LatheGeometry emits a quad at each pole. Keep only the face with three distinct points.
+  for (let i = 0; i < shell.index.count; i += 3) {
+    const a = shell.index.getX(i);
+    const b = shell.index.getX(i + 1);
+    const d = shell.index.getX(i + 2);
+    triangle.a.fromBufferAttribute(vertices, a);
+    triangle.b.fromBufferAttribute(vertices, b);
+    triangle.c.fromBufferAttribute(vertices, d);
+    if (triangle.getArea() > 0) indices.push(a, b, d);
+  }
+  shell.setIndex(indices);
+  c.add(shell, enamel);
+  c.cylinder(0.269, 0.257, 0.07, [0, 0.035, 0], dark);
 }
 
 function forest(c) {

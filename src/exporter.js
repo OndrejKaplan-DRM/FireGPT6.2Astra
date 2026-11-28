@@ -43,6 +43,7 @@ export async function renderFlipbook(viewer, source, asset, settings, options = 
   const ctx = canvas.getContext('2d');
   viewer.resize(size, size, settings.quality, { bake: true });
   viewer.configure(asset, settings.quality, true);
+  const plane = viewer.frameAtlas(settings);
   const frameRate = frameCount / asset.duration;
   // Explicit sample times preserve the first flash of one-shot clips.
   const frameTimes = asset.burst ? Array.from({ length: frameCount }, (_, n) => {
@@ -71,14 +72,18 @@ export async function renderFlipbook(viewer, source, asset, settings, options = 
       if (yieldEvery < frameCount) await nextPaint();
     }
   }
+  const bakedLayers = [
+    ['flame', asset.emission], ['smoke', asset.smoke], ['sparks', asset.spark],
+    ['dust', asset.burst ? asset.smoke * (asset.burstLook?.[3] ?? 0) : 0],
+  ].filter(([id, strength]) => strength > 0 && settings.layers[id] !== false).map(([id]) => id);
   const manifest = {
     ...createDescriptor(asset, settings),
     flipbook: {
       file: 'flipbook.png', frameCount, frameRate, columns, rows,
       ...(frameTimes ? { frameTimes, sampling: 'nonuniform; interpolate using frameTimes (seconds)' } : {}),
       frameWidth: size, frameHeight: size, order: 'row-major, left-to-right, top-to-bottom',
-      alpha: 'straight', colorSpace: 'sRGB', camera: 'orbit',
-      loop: !asset.burst, bakedLayers: ['flame', 'smoke', 'sparks', ...(asset.burst ? ['dust'] : [])].filter((id) => settings.layers[id]),
+      alpha: 'straight', colorSpace: 'sRGB', camera: 'front', plane,
+      loop: !asset.burst, bakedLayers,
     },
   };
   return { png: await canvasBlob(canvas), manifest };

@@ -10,7 +10,8 @@ const pointVertex = /* glsl */`
   void main() {
     vec4 p = modelViewMatrix * vec4(position, 1.);
     gl_Position = projectionMatrix * p;
-    gl_PointSize = clamp(pixels * scale / max(.1, -p.z) * (.78 + energy * .95), 1.5, 17.);
+    float screenScale = projectionMatrix[3][3] > .5 ? projectionMatrix[1][1] * .31 : 1. / max(.1, -p.z);
+    gl_PointSize = clamp(pixels * scale * screenScale * (.78 + energy * .95), 1.5, 17.);
     heat = energy;
     age = cooling;
   }

@@ -80,10 +80,10 @@ const fragmentShader = /* glsl */`
     return (worldMatrix * vec4(h.xyz / h.w, 1.)).xyz;
   }
 
-  vec2 intersectBox(vec3 direction) {
+  vec2 intersectBox(vec3 origin, vec3 direction) {
     vec3 inverse = sign(direction + vec3(1e-8)) / max(abs(direction), vec3(1e-6));
-    vec3 t0 = (boxMin - eye) * inverse;
-    vec3 t1 = (boxMax - eye) * inverse;
+    vec3 t0 = (boxMin - origin) * inverse;
+    vec3 t1 = (boxMax - origin) * inverse;
     vec3 near = min(t0, t1);
     vec3 far = max(t0, t1);
     return vec2(max(max(near.x, near.y), near.z), min(min(far.x, far.y), far.z));
@@ -254,18 +254,19 @@ const fragmentShader = /* glsl */`
   void main() {
     vec2 uv = screenUv;
     float depth = texture(sceneDepth, uv).r;
-    vec3 direction = normalize(unproject(uv, .9999) - eye);
-    vec2 hit = intersectBox(direction);
+    vec3 origin = transparentOutput > .5 ? unproject(uv, 0.) : eye;
+    vec3 direction = normalize(unproject(uv, .9999) - origin);
+    vec2 hit = intersectBox(origin, direction);
     float near = max(hit.x, .0001);
     float far = hit.y;
-    if (depth < .999995 && far > near) far = min(far, length(unproject(uv, depth) - eye));
+    if (depth < .999995 && far > near) far = min(far, length(unproject(uv, depth) - origin));
     vec4 bg = texture(sceneColor, uv);
     vec3 scattering = vec3(0.);
     float transmittance = 1.0;
 
     if (far > near) {
       if (thermal > .001 && transparentOutput < .5) {
-        bg = texture(sceneColor, uv + refractRay(eye + direction * near, direction, far - near));
+        bg = texture(sceneColor, uv + refractRay(origin + direction * near, direction, far - near));
       }
       if (emission + smoke + dustStrength > 0.) {
         float stepSize = (far - near) / float(steps);
@@ -273,7 +274,7 @@ const fragmentShader = /* glsl */`
         float distanceAt = near + stepSize * mix(.20, .81, dither);
         for (int i = 0; i < 96; i++) {
           if (i >= steps || transmittance < .009) break;
-          vec3 p = eye + direction * distanceAt;
+          vec3 p = origin + direction * distanceAt;
           vec4 local = fieldAt(p);
           float alpha = 1. - exp(-local.a * stepSize / max(extent.y * .65, .01));
           scattering += transmittance * alpha * local.rgb / max(local.a, .00001);

@@ -12,14 +12,18 @@ Přenositelné soubory lze využít přímo v enginu nebo s jeho vlastním VFX s
 | `src/viewer.js` | Scéna, GPU render target s hloubkou, světla, kamera, rozpočty a životnost GPU zdrojů |
 | `src/studies.js` | Definice studiových záběrů a aplikace jejich parametrů v náhledu i při bake |
 | `src/main.js` | Katalog, transport animace, inspektor, nastavení a fallback snímek |
+| `src/atlas.js` | Výpočet společného záběru pro celý atlas, rozměry v metrech a kotevní bod v UV |
 | `src/exporter.js` | Serializace GLB a JSON a průhledný flipbook ze stejného rendereru |
 | `src/bake.js`, `scripts/bake.mjs` | Reprodukovatelné dávkové rendery, scény GLB, manifesty a ZIP |
+| `scripts/check.mjs`, `scripts/check-import.mjs` | Kontrola distribučních PNG po dekódování, skutečný import GLB, kontrola 3D ploch, UV a souladu manifestů |
+| `scripts/check-godot.mjs`, `scripts/check-godot.gd` | Samostatný spotřebitelský test ve skutečném enginu, složení tří atlasů přes černou a bílou |
 | `public/renders/`, `public/dataset/` | Snímky galerie a vygenerované distribuční soubory |
 
 ## Renderovací pipeline
 
 1. Z katalogu se vytvoří nastavení efektu a z profilu příslušný model.
-   Kamera má předvolby perspektiva, zepředu, z boku a shora.
+   Kamera má předvolby perspektiva, zepředu, z boku a shora. Studie mohou
+   vyžádat záběr celého sloupce a neutrální světlé studio.
 2. Renderer kreslí pozadí, podlahu, scénickou geometrii a žhavé částice
    do barevného a hloubkového render targetu. Pokud je dostupný plovoucí
    formát, používá lineární HDR.
@@ -33,7 +37,9 @@ Přenositelné soubory lze využít přímo v enginu nebo s jeho vlastním VFX s
    převádí lineární barvu filmovou křivkou do sRGB.
 5. Bake používá shodný renderer v řízeném čase a průhledném režimu.
    Profil určuje počet vzorků objemu, rozpočet částic, stíny a LOD.
-   Průhledný atlas používá jednu kameru a sRGB s přímou alfou. U burstů
+   Galerie používá perspektivu. Průhledný atlas používá čelní ortografickou
+   kameru. Každý paprsek začíná na odpovídajícím místě přední roviny kamery.
+   Záběr je pevný po délku klipu a zohledňuje zvolený vítr. Výsledkem je sRGB s přímou alfou. U burstů
    jsou časy jednotlivých vzorků uložené v `frameTimes`.
 
 ## Datové rozhraní

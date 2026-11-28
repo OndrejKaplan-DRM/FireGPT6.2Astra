@@ -12,7 +12,7 @@ const studyIds = flag('study-ids')?.split(',');
 const stillsOnly = args.includes('--stills-only');
 const skipBuild = args.includes('--skip-build');
 const sample = !args.includes('--no-detail');
-const frameSize = Number(flag('size') ?? 112);
+const frameSize = Number(flag('size') ?? 160);
 if (!Number.isInteger(frameSize) || frameSize < 32 || frameSize > 256) throw new Error('Use --size=32…256.');
 if ((selected || studyIds) && !stillsOnly) throw new Error('Subset selection requires --stills-only.');
 

@@ -1,5 +1,5 @@
 export const SCHEMA = 'fire-asset-lab/preset@1';
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 
 export const groups = [
   { id: 'detail', label: 'Drobné efekty', icon: 'flame' },

@@ -40,6 +40,8 @@ function runLab() {
   let dirty = true;
   let viewer;
   let exporting = false;
+  let bakingAtlas = false;
+  let suspendedViewer;
 
   const canvas = $('live');
   try {
@@ -49,8 +51,10 @@ function runLab() {
   }
   canvas.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
+    suspendedViewer = viewer;
     viewer = null;
     showFallback();
+    syncInspector();
   });
 
   function showFallback() {
@@ -61,12 +65,39 @@ function runLab() {
     $('fps').textContent = '';
     $('view-message').textContent = 'Živý náhled vyžaduje WebGL 2.';
     $('view-message').hidden = false;
-    document.querySelectorAll('#stage button, #stage select, #stage input').forEach((control) => {
-      if (control.id !== 'maximize') control.disabled = true;
-    });
+    setStageEnabled(false);
     ['export-png', 'export-atlas'].forEach((id) => { $(id).disabled = true; });
-    if (asset) $('fallback-frame').src = stillUrl(asset.id);
+    $('fallback-frame').src = selectedStudy ? stillUrl(selectedStudy.id, true) : stillUrl(asset.id);
   }
+
+  function setStageEnabled(enabled) {
+    document.querySelectorAll('#stage button, #stage select, #stage input').forEach((control) => {
+      if (control.id !== 'maximize') control.disabled = !enabled;
+    });
+    document.querySelector('#view .view-bottom').hidden = !enabled;
+  }
+
+  canvas.addEventListener('webglcontextrestored', () => {
+    if (!suspendedViewer) return;
+    viewer = suspendedViewer;
+    suspendedViewer = null;
+    canvas.hidden = false;
+    $('fallback-frame').hidden = true;
+    $('view-message').hidden = true;
+    $('render-indicator').classList.remove('offline');
+    $('render-mode').textContent = 'WEBGL 2';
+    setStageEnabled(true);
+    resize();
+    viewer.configure(asset, settings.quality, true);
+    viewer.frame($('camera').value, selectedStudy?.framing);
+    viewer.setBackdrop(backdrop);
+    viewer.setLightStudio($('light-studio').checked);
+    viewer.setWireframe(wire);
+    viewer.setGrid(grid);
+    $('export-png').disabled = $('export-atlas').disabled = exporting;
+    syncInspector();
+    dirty = true;
+  });
 
   function stillUrl(id, study = false) { return import.meta.env.BASE_URL + 'renders/' + (study ? 'studies/' : '') + id + '.webp'; }
   const normalize = (value) => value.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
@@ -121,6 +152,7 @@ function runLab() {
     $('seed').value = settings.seed;
     $('quality').querySelectorAll('button').forEach((node) => node.setAttribute('aria-pressed', node.dataset.quality === settings.quality));
     const q = qualities[settings.quality];
+    $('light-studio').disabled = !viewer;
     $('quality-info').textContent = q.steps + ' kroků objemu · až ' + q.particles + ' částic';
     $('layers').querySelectorAll('[data-burst-only]').forEach((row) => { row.hidden = !asset.burst; });
     $('layers').querySelectorAll('input').forEach((node) => { node.checked = settings.layers[node.value]; });
@@ -160,15 +192,17 @@ function runLab() {
     const next = byId.get(id);
     if (next.id !== asset.id || restore) {
       selectedStudy = null;
+      $('light-studio').checked = false;
+      viewer?.setLightStudio(false);
       backdrop = false;
       $('backdrop').setAttribute('aria-pressed', 'false');
       viewer?.setBackdrop(false);
       asset = next;
       settings = initialSettings(asset, settings.quality);
       time = asset.burst && playing ? .017 : asset.id === 'grenade' ? .37 : asset.burst ? asset.duration * .041 : .84;
+      $('camera').value = 'orbit';
       if (viewer) {
         viewer.configure(asset, settings.quality, true);
-        $('camera').value = 'orbit';
       } else $('fallback-frame').src = stillUrl(id);
       $('catalog').querySelectorAll('[data-asset]').forEach((node) => node.setAttribute('aria-current', node.dataset.asset === id));
       $('gallery-track').querySelectorAll('.preview-card').forEach((node) => node.setAttribute('aria-current', node.dataset.asset === id));
@@ -221,6 +255,8 @@ function runLab() {
     playing = false;
     updatePlay();
     applyStudy(settings, study);
+    $('light-studio').checked = Boolean(study.lightStudio);
+    viewer?.setLightStudio($('light-studio').checked);
     backdrop = Boolean(study.backdrop);
     $('backdrop').setAttribute('aria-pressed', backdrop);
     $('camera').value = study.view ?? 'orbit';
@@ -264,6 +300,10 @@ function runLab() {
       dirty = true;
     });
   }
+  $('light-studio').addEventListener('change', () => {
+    viewer?.setLightStudio($('light-studio').checked);
+    dirty = true;
+  });
   $('backdrop').addEventListener('click', () => {
     backdrop = !backdrop;
     viewer?.setBackdrop(backdrop);
@@ -334,10 +374,8 @@ function runLab() {
       const output = $('export-status');
       const progress = $('export-progress');
       const savedTime = time;
-      const resume = playing;
       if (id === 'export-atlas') {
-        playing = false;
-        updatePlay();
+        bakingAtlas = true;
         progress.hidden = false;
         progress.value = 0;
       }
@@ -352,7 +390,7 @@ function runLab() {
       } catch (error) {
         output.textContent = error?.message || 'Export se nezdařil.';
       } finally {
-        if (id === 'export-atlas') { playing = resume; updatePlay(); }
+        bakingAtlas = false;
         exporting = false;
         progress.hidden = true;
         $('export-actions')?.removeAttribute('aria-busy');
@@ -394,7 +432,7 @@ function runLab() {
     const delta = Math.min(Math.max((now - previous) / 1000, 0), .16);
     previous = now;
     if (document.hidden || !viewer) return;
-    if (playing) {
+    if (playing && !bakingAtlas) {
       time += delta * speed;
       if (time >= asset.duration) {
         time = looping ? time % asset.duration : asset.duration;

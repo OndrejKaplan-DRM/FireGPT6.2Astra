@@ -6,6 +6,8 @@ import { studies } from '../src/studies.js';
 import { buildDetailSample, buildSourceModel } from '../src/models.js';
 import { countTriangles, disposeModel } from '../src/viewer.js';
 
+import { checkAtlas, checkGlb } from './check-import.mjs';
+
 const profiles = Object.keys(qualities);
 const models = new Map();
 const ids = new Set();
@@ -60,13 +62,8 @@ for (const count of [100, 10_000, 1_000_000]) {
 }
 console.log(presets.length + ' presets, ' + (models.size - 1) + ' unique source meshes in 3 LODs, detail range 100…1,000,000.');
 
-let zip;
-try {
-  zip = await readFile('public/dataset/fire-asset-lab.zip');
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-}
-if (zip) {
+{
+  const zip = await readFile('public/dataset/fire-asset-lab.zip');
   const files = unzipSync(zip);
   const get = (name) => {
     assert(files[name], 'Missing ' + name);
@@ -75,6 +72,7 @@ if (zip) {
   const json = (name) => JSON.parse(strFromU8(get(name)));
   const catalog = json('catalog.json');
   assert.equal(catalog.release, VERSION);
+  assert.equal(strFromU8(get('README.md')), await readFile('ASSETS.md', 'utf8'));
   assert.equal(catalog.assets.length, presets.length);
   assert.equal(catalog.studies.length, studies.length);
   for (const study of catalog.studies) {
@@ -89,7 +87,8 @@ if (zip) {
     assert(preset);
     const folder = asset.manifest.slice(0, -'manifest.json'.length);
     const manifest = json(asset.manifest);
-    assert.equal(manifest.asset.id, asset.id);
+    assert.deepEqual(manifest.asset, preset);
+    assert.equal(manifest.version, VERSION);
     assert.equal(manifest.schema, SCHEMA);
     const atlas = get(folder + manifest.flipbook.file);
     const png = new DataView(atlas.buffer, atlas.byteOffset, atlas.byteLength);
@@ -97,7 +96,10 @@ if (zip) {
     assert.equal(png.getUint32(16), manifest.flipbook.columns * manifest.flipbook.frameWidth);
     assert.equal(png.getUint32(20), manifest.flipbook.rows * manifest.flipbook.frameHeight);
     assert.equal(png.getUint8(25), 6, 'Atlas must contain alpha');
+    checkAtlas(atlas, manifest.flipbook, asset.id);
     assert.equal(manifest.flipbook.loop, !preset.burst);
+    if (preset.id === 'spark') assert.deepEqual(manifest.flipbook.bakedLayers, ['sparks']);
+    if (preset.id === 'candle') assert(!manifest.flipbook.bakedLayers.includes('sparks'));
     const times = manifest.flipbook.frameTimes;
     if (preset.burst) {
       assert.equal(times.length, manifest.flipbook.frameCount);
@@ -111,6 +113,7 @@ if (zip) {
     }
     assert.equal(asset.variants.length, winds.length * 2);
     assert.equal(strFromU8(get(folder + manifest.still).subarray(8, 12)), 'WEBP');
+    assert.deepEqual(get(folder + manifest.still), new Uint8Array(await readFile('public/renders/' + asset.id + '.webp')));
     for (const variant of asset.variants) {
       const { settings, asset: ref } = json(folder + variant.file);
       assert.equal(ref.id, asset.id);
@@ -121,12 +124,10 @@ if (zip) {
     assert.equal(Object.keys(manifest.models).length, preset.model === 'none' ? 0 : 3);
     for (const [profile, model] of Object.entries(manifest.models)) {
       assert.equal(model.triangles, models.get(preset.model)[profile]);
-      assert.equal(strFromU8(get(folder + model.file).subarray(0, 4)), 'glTF');
+      await checkGlb(get(folder + model.file), model.triangles, asset.id + '/' + profile);
     }
   }
   assert.deepEqual(catalog.samples.map(({ triangles }) => triangles), [100, 10_000, 1_000_000]);
-  for (const sample of catalog.samples) assert.equal(strFromU8(get(sample.file).subarray(0, 4)), 'glTF');
+  for (const sample of catalog.samples) await checkGlb(get(sample.file), sample.triangles, sample.file);
   console.log('ZIP verified: ' + catalog.assets.length + ' stills and atlases, ' + catalog.studies.length + ' render studies, ' + variantCount + ' condition presets, 45 prop GLBs and 3 detail samples.');
-} else {
-  console.log('No baked distribution ZIP present. Run npm run bake to generate it.');
 }

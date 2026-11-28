@@ -21,6 +21,7 @@ export function installBakeInterface() {
       viewer.resize(width, height, quality, { bake: true });
       viewer.configure(asset, quality, true);
       viewer.setBackdrop(Boolean(study?.backdrop));
+      viewer.setLightStudio(Boolean(study?.lightStudio));
       if (study) viewer.frame(study.view, study.framing);
       const featureTime = id === 'grenade' ? .37 : asset.burst ? asset.duration * .041 : 1.44;
       viewer.render(study?.frame ?? t ?? featureTime, settings);

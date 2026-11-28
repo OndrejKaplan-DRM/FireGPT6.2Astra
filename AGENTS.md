@@ -1,4 +1,5 @@
 # Pokyny pro vývojové agenty
 
-Před prací si přečti [ASTRA.md](ASTRA.md). Upřesňuje start, konvence a hranice projektu.
-Aktuální stav najdeš v [TODO.md](TODO.md) a historii návrhu v [DECISIONS.md](DECISIONS.md).
+Před úpravami si přečti projektové instrukce ve [ForGPT.md](ForGPT.md).
+Moduly popisuje [ARCHITECTURE.md](ARCHITECTURE.md), aktuální stav [TODO.md](TODO.md)
+a důvody změn [DECISIONS.md](DECISIONS.md).

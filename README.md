@@ -20,7 +20,14 @@ V terminálu se vypíše adresa prohlížeče. Pro produkční sestavení použi
 `npm run build` a servírujte složku `dist/`. Aplikace pracuje bez CDN, API i
 databáze. Bez WebGL 2 zůstává dostupný katalog se statickými rendery a stažení dat.
 
-## v0.2.0
+## Opravy ve v0.2.1
+
+Atlasy mají 160 × 160 px na snímek. Rozměry billboardu, směr pohledu a pivot
+jsou přímo v manifestu. V inspektoru lze zapnout světlé studiové pozadí
+pro posouzení tmavého kouře. Opravy UV a dosednutí modelu jsou vidět při importu
+do Blenderu. Postup importu do Godotu a snímky před a po shrnuje [audit](AUDIT.md).
+
+## Vizuální studie z v0.2.0
 
 V galerii přepni ze **Scén** na **Studie**. Kliknutí na studii otevře
 odpovídající čas animace, pohled, vrstvy a podmínky v živém náhledu.
@@ -66,7 +73,7 @@ filmové VFX a metrové souřadnice pro scénu, bez inženýrské kalibrace hoř
 
 ## Vývoj a návaznost
 
-- [ASTRA.md](ASTRA.md) popisuje konvence a postup spuštění.
+- [ForGPT.md](ForGPT.md) popisuje konvence a postup spuštění.
 - [ARCHITECTURE.md](ARCHITECTURE.md) popisuje moduly rendereru a formáty.
 - [DECISIONS.md](DECISIONS.md) obsahuje záznam rozhodnutí.
 - [TODO.md](TODO.md) obsahuje aktuální stav a zbývající ověření.
@@ -74,5 +81,5 @@ filmové VFX a metrové souřadnice pro scénu, bez inženýrské kalibrace hoř
 `npm run check` ověří presety, geometrii a exportovaný balík.
 `npm run bake` obnoví rendery i ZIP pomocí místního Chromia. Cestu k
 Chromiu lze nastavit přes `CHROMIUM_PATH`. Volby `--stills-only`,
-`--ids=campfire,candle`, `--study-ids=grenade-dust,tnt-smoke` a `--size=112` řídí rozsah. Po změně exportů
+`--ids=campfire,candle`, `--study-ids=grenade-dust,tnt-smoke` a `--size=160` řídí rozsah. Po změně exportů
 spusťte sestavení znovu, aby se soubory z `public/` zkopírovaly do `dist/`.

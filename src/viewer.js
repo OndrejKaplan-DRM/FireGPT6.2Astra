@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { atlasPlane } from './atlas.js';
 import { frameFor, qualities, winds } from './catalog.js';
 import { buildSourceModel } from './models.js';
 import { createParticles } from './particles.js';
@@ -56,9 +57,9 @@ function makeFloor() {
   texture.needsUpdate = true;
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({
     color: 0x51575e, map: texture, roughness: .93, metalness: .06,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1,
   }));
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -.013;
   floor.receiveShadow = true;
   return floor;
 }
@@ -101,6 +102,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
   target.depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
 
   const camera = new THREE.PerspectiveCamera(34, 1, .015, 160);
+  const atlasCamera = new THREE.OrthographicCamera();
   const controls = orbit ? new OrbitControls(camera, canvas) : null;
   if (controls) {
     controls.enableDamping = true;
@@ -115,7 +117,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
   const floor = makeFloor();
   const backdrop = makeRefractionBackdrop();
   const grid = new THREE.GridHelper(30, 60, 0x514c43, 0x514c43);
-  grid.position.y = -.007;
+  grid.position.y = .001;
   grid.material.transparent = true;
   grid.material.opacity = .19;
   grid.material.depthWrite = false;
@@ -164,8 +166,15 @@ export function createViewer(canvas, { orbit = true } = {}) {
 
   function frame(view = 'orbit', framing = 'scene') {
     const standard = frameFor(asset);
-    const height = framing === 'detail' ? asset.base + asset.height * .42 : standard.target;
-    const span = framing === 'detail' ? Math.max(asset.height * 1.41, asset.width * .78, .095) : standard.span;
+    let { target: height, span } = standard;
+    if (framing === 'detail') {
+      height = asset.base + asset.height * .42;
+      span = Math.max(asset.height * 1.41, asset.width * .78, .095);
+    } else if (framing === 'column') {
+      const columnHeight = asset.base + asset.height * 2.04;
+      height = columnHeight * .5;
+      span = Math.max(standard.span, columnHeight * 1.15);
+    }
     cameraSpan = span;
     const distance = span * (camera.aspect < 1 ? 1.83 / Math.max(camera.aspect, .56) : 1.77);
     center.set(asset.width * winds[asset.wind].bend * .24, height, 0);
@@ -183,6 +192,18 @@ export function createViewer(canvas, { orbit = true } = {}) {
       controls.maxDistance = span * 8.7;
       controls.update();
     }
+  }
+
+  function frameAtlas(settings) {
+    const plane = atlasPlane(asset, winds[settings.wind].bend);
+    const half = plane.widthMeters / 2;
+    const [x, y] = plane.center;
+    const distance = asset.depth * 2 + 1;
+    Object.assign(atlasCamera, { left: -half, right: half, top: half, bottom: -half, near: .001, far: distance * 2 });
+    atlasCamera.position.set(x, y, distance);
+    atlasCamera.updateProjectionMatrix();
+    atlasCamera.updateMatrixWorld();
+    return plane;
   }
 
   function setWireframe(value) {
@@ -261,6 +282,7 @@ export function createViewer(canvas, { orbit = true } = {}) {
     floor.visible = !transparent;
     grid.visible = useGrid && !transparent;
     backdrop.visible = useBackdrop && !transparent;
+    const shot = transparent ? atlasCamera : camera;
     if (backdrop.visible) {
       camera.getWorldDirection(behind);
       backdrop.position.copy(controls?.target ?? center).addScaledVector(behind, cameraSpan * 1.52);
@@ -285,14 +307,14 @@ export function createViewer(canvas, { orbit = true } = {}) {
     sparks.update(asset, settings, profile.particles, time, wind, displayHeight);
 
     renderer.setRenderTarget(target);
-    renderer.setClearColor(transparent ? 0x000000 : 0x141519, transparent ? 0 : 1);
+    renderer.setClearColor(transparent ? 0x000000 : scene.fog.color, transparent ? 0 : 1);
     renderer.clear();
-    renderer.render(scene, camera);
+    renderer.render(scene, shot);
 
     const u = material.uniforms;
-    u.invProjection.value.copy(camera.projectionMatrixInverse);
-    u.worldMatrix.value.copy(camera.matrixWorld);
-    u.eye.value.copy(camera.position);
+    u.invProjection.value.copy(shot.projectionMatrixInverse);
+    u.worldMatrix.value.copy(shot.matrixWorld);
+    u.eye.value.copy(shot.position);
     u.extent.value.set(asset.width, asset.height, asset.depth);
     u.boxMin.value.set(-asset.width * .94, Math.max(-.007, asset.base - asset.height * (asset.burst ? .22 : .14)), -asset.depth * .98);
     u.boxMax.value.set(asset.width * (.98 + wind * 2.35), asset.base + asset.height * 2.04, asset.depth * .95);
@@ -320,10 +342,14 @@ export function createViewer(canvas, { orbit = true } = {}) {
   }
 
   return {
-    configure, resize, render, frame, setWireframe,
+    configure, resize, render, frame, frameAtlas, setWireframe,
     onChange: (callback) => controls?.addEventListener('change', callback),
     setGrid: (value) => { useGrid = value; },
     setBackdrop: (value) => { useBackdrop = value; },
+    setLightStudio: (value) => {
+      scene.fog.color.setHex(value ? 0xa0a4a8 : 0x141519);
+      floor.material.emissive.setHex(value ? 0x73777b : 0x000000);
+    },
     triangles: () => tris,
     stats: () => ({ width: displayWidth, height: displayHeight, pixels: sparks.count(), hdr }),
     dispose: () => {

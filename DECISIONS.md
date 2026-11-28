@@ -48,3 +48,24 @@
 - **Renderové studie.** Snímek a živý náhled používají společnou definici
   kamery, času, vrstev a podmínek. Videosekvence jednorázových efektů
   vzorkují úvod hustěji a ukládají přesné časy do manifestu.
+
+## 28. 11. 2026 · Audit v0.2.1
+
+- **Vlastní kamera pro export.** Hrana buňky musí být průhledná, aby efekt šel
+  vložit nad libovolné herní prostředí. Pro atlas používáme čelní ortografický
+  pohled s rezervou, pevným měřítkem po celý klip a pivotem v manifestu.
+  Zvýšení velikosti buňky ze 112 na 160 px kompenzuje širší záběr.
+- **UV a kontakt se zemí.** Společný generátor panelů dostal orientované UV
+  s jedním opakováním na metr. Z rotační plochy lahve se odfiltrují nulové
+  trojúhelníky v pólech. Prodloužení patky zachovává polohu horní části modelu.
+  Podlaha náhledu je v y = 0, souběžné plochy řeší hloubkový offset.
+- **Kontrola výstupu.** Regrese se vyhodnocují až na dekódovaných průhledných
+  atlasech a na GLB načtených z distribučního ZIP. Samostatná zkouška v Godotu
+  čte tentýž balík a porovnává složený obraz s výsledkem přímé alfy.
+- **Projektová paměť.** Kořenový `AGENTS.md` směruje Codex do `ForGPT.md`.
+  Původní `ASTRA.md` zachovává staré odkazy. Zjištění a reprodukci obsahuje [audit](AUDIT.md).
+
+- **Čitelnost kouře.** Světlé studio a záběr celého sloupu usnadňují
+  kontrolu obrysu tmavého kouře. Tuto volbu používají studie pneumatik a auta.
+  Test materiálu v Godotu používá bezeztrátovou texturu a vypnuté
+  `Fix Alpha Border`, které při výchozím importu měnilo barvu části texelů.

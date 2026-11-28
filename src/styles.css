@@ -248,3 +248,6 @@ footer { display: flex; justify-content: space-between; color: #888a96; padding-
   .gallery-heading { align-items: flex-start; }
   .gallery-controls { flex-wrap: wrap; justify-content: flex-end; }
 }
+
+.studio-option { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; cursor: pointer; }
+.studio-option input { accent-color: var(--accent, #ef9870); }
